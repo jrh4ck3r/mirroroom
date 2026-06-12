@@ -21,6 +21,52 @@
 
 ---
 
+## See It In Action
+
+We asked MirrorRoom what it thinks of MirrorRoom.
+
+We ran our own project idea through the Silicon Valley room — a VC, a backend engineer, a chronically online skeptic, and a startup-obsessed software engineer. Here's what happened, unedited.
+
+---
+
+**💼 Jennifer Cho** — *Partner at an early-stage venture capital fund, San Francisco*
+
+> I love the creativity behind MirrorRoom, but my immediate question is, what's the business model here — are you planning to charge users for access to these simulated focus groups, and if so, how do you plan to acquire and retain customers at scale? The open-source aspect is intriguing, but it also raises questions about how you'll monetize the platform and ensure its long-term viability.
+
+**🛠️ Lars** — *Senior backend engineer, 20 years experience, Stockholm*
+
+> I appreciate Jennifer's focus on the business model, but from a technical standpoint, I'm more concerned about the complexity of simulating realistic debates and the potential for biased AI agent personas. I'd like to know more about the data used to train these AI agents and how the system will handle edge cases, such as contradictory or ambiguous input ideas.
+
+**🙄 ratioed_again** — *Extremely online*
+
+> Because what the world really needed was another "revolutionary" market research tool that's just a rehashed version of existing focus group software with a fancy AI coat of paint. I'm with Lars on the concern about biased AI agent personas — we all know how well AI models do with nuance and subtlety (spoiler: they don't).
+
+**🧑🏽💻 Danial** — *Software engineer at a tech company, Cyberjaya*
+
+> I think Jennifer and Lars are focusing too much on the potential pitfalls, but I love the innovative spirit behind MirrorRoom. By leveraging these technologies, MirrorRoom could potentially disrupt the market research industry in a big way, similar to how Airbnb disrupted hospitality or Uber disrupted transportation.
+
+---
+
+### 📜 Verdict: HIGH SUPPORT
+
+**Points of support:**
+- Innovative application of AI to focus groups
+- Potential to disrupt the market research industry
+- Leveraging open-source frameworks for fine-tuning AI agent personas
+
+**Concerns raised:**
+- Potential for biased AI agent personas
+- Difficulty ensuring natural behavior from AI agents
+- Challenges in monetizing an open-source platform
+
+**Most polarizing pair:** ratioed_again vs Danial — disagreed on whether MirrorRoom could meaningfully disrupt market research, or is just another AI-coated rehash.
+
+---
+
+*Even the harshest critic in the room couldn't help but engage. That's the point.*
+
+---
+
 ## 🔑 Setup & Installation
 
 ### Prerequisites

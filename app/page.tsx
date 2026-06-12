@@ -3,6 +3,25 @@
 import { useState, useEffect, useRef } from "react";
 import { RoomPreset, AgentProfile, DebateMessage, Verdict } from "@/lib/types";
 
+// Agent accent colors mapped by agent id (exactly per design spec)
+const AGENT_ACCENTS: Record<string, string> = {
+  "pakcik-roslan": "#8C6A4F",
+  "gen-z-kl-creative": "#E0789A",
+  "indian-teacher-ipoh": "#4F8C7A",
+  "chinese-business-owner-penang": "#C9A227",
+  "young-mother-shah-alam": "#7E9CD8",
+  "tech-bro-cyberjaya": "#5BC0BE",
+  "uncle-stephen-ranau": "#6B8E4E",
+  "auntie-mei-lin-klang": "#B5651D",
+  "rahim-construction-worker": "#A78BFA",
+  "twitter-skeptic": "#C0C0C0",
+  "vc-investor": "#E8B86D",
+  "skeptical-engineer": "#6E9ECF"
+};
+
+// Helper to get agent accent color with fallback to brass/gold
+const getAgentColor = (id: string) => AGENT_ACCENTS[id] || "#D4A24E";
+
 // Premium pre-baked example ideas for quick testing
 const EXAMPLE_IDEAS = [
   {
@@ -143,7 +162,7 @@ export default function Dashboard() {
     setVerdict(null);
     setDisplayedMessages([]);
     setIsDebating(true);
-    setStatusText("Initializing focus group panel...");
+    setStatusText("Convening focus group panel...");
     setActiveAgentId(null);
 
     // Resolve room agents
@@ -242,46 +261,32 @@ export default function Dashboard() {
     }
   };
 
-  // Helper to color-code overall score
-  const getScoreColor = (score: number) => {
-    if (score >= 70) return "text-emerald-500 border-emerald-500/20 bg-emerald-500/5";
-    if (score >= 40) return "text-amber-500 border-amber-500/20 bg-amber-500/5";
-    return "text-rose-500 border-rose-500/20 bg-rose-500/5";
-  };
-
   return (
-    <div className="min-h-screen bg-grid-glow flex flex-col antialiased">
-      {/* Top Banner Header */}
-      <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-50">
+    <div className="min-h-screen bg-[#16181A] text-[#ECE8E1] flex flex-col antialiased font-sans">
+      
+      {/* Top Bar Header */}
+      <header className="border-b border-zinc-800 bg-[#1F2226]/90 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🪞</span>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                MirrorRoom <span className="text-xs bg-amber-500/10 text-amber-500 border border-amber-500/25 px-1.5 py-0.5 rounded-sm font-mono">v0.1</span>
+              <h1 className="text-xl font-bold tracking-tight font-serif text-white flex items-center gap-2">
+                MIRRORROOM <span className="text-[9px] bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/30 px-1.5 py-0.5 rounded-sm font-mono tracking-widest uppercase">TRIBUNAL RECORD</span>
               </h1>
-              <p className="text-xs text-zinc-400">Demographic AI Focus Group Simulator</p>
+              <p className="text-[10px] text-[#9A9A92] font-mono tracking-wider uppercase">Official Deliberation Index</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            <a
-              href="https://github.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-zinc-400 hover:text-white transition-colors"
-            >
-              Docs
-            </a>
-            <span className="h-4 w-px bg-zinc-800" />
-            <a
-              href="https://build.nvidia.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-zinc-400 hover:text-white transition-colors"
-            >
-              NVIDIA build.nvidia.com
-            </a>
+          <div className="flex items-center gap-6 font-mono text-xs text-[#9A9A92]">
+            {currentRoom && (
+              <div className="hidden sm:flex items-center gap-2">
+                <span>ROOM:</span>
+                <span className="text-[#ECE8E1] font-semibold">{currentRoom.name.toUpperCase()}</span>
+                <span className="text-[#D4A24E]">•</span>
+                <span>PANELISTS:</span>
+                <span className="text-[#ECE8E1] font-semibold">{currentRoomAgents.length}</span>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -289,22 +294,22 @@ export default function Dashboard() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Left Column: Control Panel (5 cols) */}
+        {/* Left Column: Case Record Config Panel (5 cols) */}
         <section className="lg:col-span-5 flex flex-col gap-6">
           
           {/* API Key Box */}
-          <div className="glass-card p-6 flex flex-col gap-4">
+          <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-4">
             <div className="flex justify-between items-center">
-              <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                🔑 NVIDIA NIM API Credentials
+              <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider flex items-center gap-2">
+                📂 CREDENTIAL REGISTRATION
               </h2>
               <a 
                 href="https://build.nvidia.com" 
                 target="_blank" 
                 rel="noreferrer" 
-                className="text-xs text-amber-500 hover:underline"
+                className="text-xs text-[#D4A24E] hover:underline font-mono"
               >
-                Get Free Key
+                REQUEST KEY
               </a>
             </div>
             
@@ -315,31 +320,31 @@ export default function Dashboard() {
                 id="api-key-input"
                 onChange={(e) => handleApiKeyChange(e.target.value)}
                 placeholder="nvapi-..."
-                className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-amber-600 focus:outline-hidden text-zinc-100 rounded-lg py-2 px-3 pr-10 text-sm font-mono transition-colors"
+                className="w-full bg-[#16181A] border border-zinc-800/80 focus:border-[#D4A24E] focus:outline-hidden text-[#ECE8E1] rounded-lg py-2 px-3 pr-10 text-sm font-mono transition-colors"
               />
               <button
                 type="button"
                 onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300 text-xs"
+                className="absolute right-3 top-2.5 text-[#9A9A92] hover:text-[#ECE8E1] text-xs font-mono"
               >
-                {showKey ? "Hide" : "Show"}
+                {showKey ? "HIDE" : "SHOW"}
               </button>
             </div>
-            <p className="text-[11px] text-zinc-500 leading-relaxed">
-              Your key is saved locally in your browser and used strictly to authenticate calls directly to NVIDIA's AI endpoints.
+            <p className="text-[11px] text-[#9A9A92] leading-relaxed font-sans">
+              Your NVIDIA API Key credentials remain stored locally on your device and are used strictly to sign request headers.
             </p>
           </div>
 
           {/* Preset Selector */}
-          <div className="glass-card p-6 flex flex-col gap-4">
-            <h2 className="text-sm font-semibold text-zinc-200">
-              👥 Select Room Presets
+          <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-4">
+            <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider">
+              🏛 SELECT INQUEST PANEL
             </h2>
             
             {loadingRooms ? (
-              <div className="flex items-center justify-center py-6 text-zinc-500 text-sm">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-500 mr-2" />
-                Loading focus rooms...
+              <div className="flex items-center justify-center py-6 text-[#9A9A92] text-xs font-mono">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#D4A24E] mr-2" />
+                LOADING CASE FILES...
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2.5">
@@ -357,17 +362,17 @@ export default function Dashboard() {
                     id={`room-select-${room.id}`}
                     className={`text-left p-3.5 rounded-lg border text-sm transition-all flex flex-col gap-1.5 ${
                       selectedRoomId === room.id
-                        ? "bg-amber-600/5 border-amber-600/50 shadow-[0_0_15px_rgba(217,119,6,0.1)]"
-                        : "bg-zinc-900/40 border-zinc-800/80 hover:bg-zinc-900/60 hover:border-zinc-700/60 cursor-pointer"
+                        ? "bg-[#D4A24E]/5 border-[#D4A24E]/50 shadow-[0_0_15px_rgba(212,162,78,0.08)]"
+                        : "bg-[#16181A]/60 border-zinc-800/80 hover:bg-[#16181A]/80 hover:border-zinc-700/60 cursor-pointer"
                     }`}
                   >
                     <div className="flex justify-between items-center w-full">
-                      <span className="font-semibold text-zinc-100">{room.name}</span>
-                      <span className="text-xs bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-sm font-mono">
-                        {room.agent_ids.length} Panelists
+                      <span className="font-semibold text-white font-serif">{room.name}</span>
+                      <span className="text-[10px] bg-zinc-800 text-[#9A9A92] px-1.5 py-0.5 rounded-sm font-mono">
+                        {room.agent_ids.length} MEMBERS
                       </span>
                     </div>
-                    <p className="text-xs text-zinc-400 leading-relaxed">{room.description}</p>
+                    <p className="text-xs text-[#9A9A92] leading-relaxed font-sans">{room.description}</p>
                   </button>
                 ))}
               </div>
@@ -375,10 +380,9 @@ export default function Dashboard() {
           </div>
 
           {/* Concept/Idea Input */}
-          <div className="glass-card p-6 flex flex-col gap-4">
-            <h2 className="text-sm font-semibold text-zinc-200 flex items-center justify-between">
-              <span>💡 What's the Idea or Policy?</span>
-              <span className="text-[10px] text-zinc-500 font-normal">Describe it in detail</span>
+          <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-4">
+            <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider flex items-center justify-between">
+              <span>📝 CONCEPT UNDER REVIEW</span>
             </h2>
             
             <textarea
@@ -388,21 +392,21 @@ export default function Dashboard() {
               disabled={isDebating}
               placeholder="e.g. A city mandate implementing a 4-day work week for corporate offices to increase mental health and productivity..."
               rows={5}
-              className="w-full bg-zinc-950/80 border border-zinc-800 focus:border-amber-600 focus:outline-hidden text-zinc-100 rounded-lg p-3 text-sm leading-relaxed transition-colors resize-none"
+              className="w-full bg-[#16181A] border border-zinc-800/80 focus:border-[#D4A24E] focus:outline-hidden text-[#ECE8E1] rounded-lg p-3 text-sm leading-relaxed font-sans transition-colors resize-none"
             />
 
             {/* Quick Presets */}
             <div className="flex flex-col gap-2">
-              <span className="text-[11px] text-zinc-500">Or pick a premade scenario:</span>
+              <span className="text-[10px] text-[#9A9A92] font-mono">PRE-LOAD TEST SCENARIOS:</span>
               <div className="flex flex-wrap gap-1.5">
                 {EXAMPLE_IDEAS.map((ex) => (
                   <button
                     key={ex.id}
                     onClick={() => selectExample(ex)}
                     disabled={isDebating}
-                    className="text-[11px] px-2.5 py-1 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-all cursor-pointer"
+                    className="text-[11px] px-2.5 py-1 rounded-sm border border-zinc-800 bg-[#16181A] text-[#9A9A92] hover:text-[#ECE8E1] hover:border-[#D4A24E]/50 transition-all cursor-pointer font-mono"
                   >
-                    {ex.title}
+                    {ex.title.toUpperCase()}
                   </button>
                 ))}
               </div>
@@ -413,22 +417,22 @@ export default function Dashboard() {
               onClick={handleRunSimulation}
               disabled={isDebating || !apiKey || !ideaText.trim()}
               id="start-debate-btn"
-              className={`w-full py-3 px-4 rounded-lg font-semibold text-sm transition-all text-center flex items-center justify-center gap-2 border ${
+              className={`w-full py-3 px-4 rounded-lg font-semibold text-sm transition-all text-center flex items-center justify-center gap-2 border font-mono tracking-widest ${
                 isDebating
                   ? "bg-zinc-900 border-zinc-800 text-zinc-500 cursor-not-allowed"
                   : !apiKey || !ideaText.trim()
                   ? "bg-zinc-900/50 border-zinc-800 text-zinc-500 cursor-not-allowed"
-                  : "bg-amber-600 text-white border-amber-500 shadow-[0_4px_20px_rgba(217,119,6,0.25)] hover:bg-amber-500 hover:shadow-[0_4px_25px_rgba(217,119,6,0.35)] cursor-pointer"
+                  : "bg-[#D4A24E] text-[#16181A] border-[#D4A24E] font-bold hover:bg-[#ECE8E1] hover:border-[#ECE8E1] cursor-pointer transition-colors shadow-md"
               }`}
             >
               {isDebating ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  Running Simulation...
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#16181A]" />
+                  CONVENING HEARINGS...
                 </>
               ) : (
                 <>
-                  <span>⚡</span> Run Focus Group Simulation
+                  ⚖️ START DELIBERATION
                 </>
               )}
             </button>
@@ -436,29 +440,31 @@ export default function Dashboard() {
 
         </section>
 
-        {/* Right Column: Panelist Status, Live Transcript & Scorecards (7 cols) */}
-        <section className="lg:col-span-7 flex flex-col gap-6">
+        {/* Right Column: Centered Debate Transcript & Stamp Verdict (7 cols) */}
+        <section className="lg:col-span-7 flex flex-col gap-6 max-w-[720px] mx-auto w-full">
           
-          {/* Panelists Status Monitor (Stays visible at all times for high visual feedback) */}
-          <div className="glass-card p-6 flex flex-col gap-4">
-            <h2 className="text-sm font-semibold text-zinc-200 flex justify-between items-center">
-              <span>👥 Focus Group Panelists ({currentRoomAgents.length})</span>
+          {/* Panelists Attendance Monitor */}
+          <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-4">
+            <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider flex justify-between items-center">
+              <span>🏛 BOARD OF INQUEST IN SESSION ({currentRoomAgents.length})</span>
               {isDebating && (
-                <span className="text-xs bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-sm font-mono animate-pulse">
-                  SIMULATION ACTIVE
+                <span className="text-[10px] text-[#D4A24E] font-bold animate-pulse font-mono tracking-widest">
+                  LIVE DELIBERATIONS
                 </span>
               )}
             </h2>
+            
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {currentRoomAgents.map((agent) => {
                 const isSpeaking = activeAgentId === agent.id;
                 const hasSpoken = displayedMessages.some(m => m.agentId === agent.id);
+                const accentColor = getAgentColor(agent.id);
                 
-                let cardClass = "border-zinc-800/80 bg-zinc-900/30 opacity-60";
+                let cardClass = "border-zinc-850 bg-[#16181A]/40 opacity-40";
                 if (isSpeaking) {
-                  cardClass = "border-amber-500 bg-amber-500/5 shadow-[0_0_15px_rgba(217,119,6,0.1)] ring-1 ring-amber-500/20 animate-pulse-border";
+                  cardClass = "border-[#D4A24E] bg-[#D4A24E]/5 shadow-[0_0_12px_rgba(212,162,78,0.05)] ring-1 ring-[#D4A24E]/25 animate-pulse-border";
                 } else if (hasSpoken) {
-                  cardClass = "border-emerald-500/25 bg-emerald-500/2 opacity-90";
+                  cardClass = "border-emerald-900/40 bg-emerald-950/2 opacity-90";
                 }
 
                 return (
@@ -466,22 +472,30 @@ export default function Dashboard() {
                     key={agent.id}
                     className={`p-3 border rounded-xl flex gap-2.5 transition-all duration-300 relative text-xs ${cardClass}`}
                   >
-                    <span className={`text-2xl self-start ${isSpeaking ? "animate-bounce" : ""}`}>{agent.avatar_emoji}</span>
+                    {/* Circle Avatar with custom agent color tint */}
+                    <div 
+                      className={`h-9 w-9 rounded-full flex items-center justify-center text-xl shrink-0 border border-zinc-800/30 ${isSpeaking ? "animate-bounce" : ""}`}
+                      style={{ backgroundColor: `${accentColor}18` }}
+                    >
+                      {agent.avatar_emoji}
+                    </div>
+
                     <div className="flex flex-col gap-0.5 overflow-hidden">
                       <div className="flex items-center gap-1.5 w-full justify-between">
-                        <span className="font-semibold text-zinc-100 truncate">{agent.name}</span>
+                        <span className="font-semibold text-[#ECE8E1] truncate font-sans">{agent.name}</span>
                         {isSpeaking && (
                           <span className="flex h-1.5 w-1.5 relative">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#D4A24E]"></span>
                           </span>
                         )}
                         {hasSpoken && (
-                          <span className="text-emerald-500 font-bold text-[10px] font-sans">✓</span>
+                          <span className="text-emerald-500 font-mono text-[9px] font-bold">✓</span>
                         )}
                       </div>
-                      <span className="text-[10px] text-zinc-400 truncate">{agent.occupation}</span>
-                      <span className="text-[9px] text-zinc-500 truncate">{agent.location.split(",")[0]}</span>
+                      <span className="text-[9px] text-[#9A9A92] truncate font-mono tracking-wider uppercase font-semibold">
+                        {agent.occupation.split(",")[0]}
+                      </span>
                     </div>
                   </div>
                 );
@@ -491,58 +505,64 @@ export default function Dashboard() {
 
           {/* Debate Transcript Box */}
           {(displayedMessages.length > 0 || isDebating) && (
-            <div className="glass-card p-6 flex flex-col min-h-[400px] max-h-[600px]">
+            <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col min-h-[400px]">
               
-              {/* Header with Progress Indicators */}
-              <div className="flex flex-col gap-3 border-b border-zinc-800 pb-4 mb-4">
+              {/* Header with Case Status */}
+              <div className="flex flex-col gap-3 border-b border-zinc-800/80 pb-4 mb-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                    💬 Live Focus Group Debate
+                  <h2 className="text-xs font-semibold text-[#9A9A92] font-mono tracking-wider uppercase">
+                    📝 TRANSCRIPT OF TESTIMONIES
                   </h2>
-                  <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono">
+                  <div className="flex items-center gap-2 text-[10px] text-[#9A9A92] font-mono uppercase">
                     {isDebating ? (
-                      <span className="text-amber-500 animate-pulse">{statusText}</span>
+                      <span className="text-[#D4A24E] animate-pulse">{statusText}</span>
                     ) : (
-                      <span className="text-zinc-500">Deliberation Concluded</span>
+                      <span className="text-zinc-500">PROCEEDINGS CONCLUDED</span>
                     )}
                   </div>
                 </div>
 
-                {/* Glow Progress Bar */}
+                {/* Progress Bar */}
                 <div className="flex items-center gap-3 w-full">
-                  <div className="flex-1 bg-zinc-950 border border-zinc-800/80 rounded-full h-2.5 overflow-hidden relative">
+                  <div className="flex-1 bg-[#16181A] border border-zinc-850 rounded-full h-1.5 overflow-hidden">
                     <div 
-                      className="bg-amber-600 h-2 rounded-full transition-all duration-700 ease-out shadow-[0_0_12px_rgba(217,119,6,0.6)]" 
+                      className="bg-[#D4A24E] h-1.5 rounded-full transition-all duration-700 ease-out shadow-[0_0_8px_rgba(212,162,78,0.4)]" 
                       style={{ width: `${(debateStep / totalSteps) * 100}%` }}
                     />
                   </div>
-                  <span className="text-xs text-zinc-400 font-mono font-semibold whitespace-nowrap">
-                    {debateStep} / {totalSteps}
+                  <span className="text-[10px] text-[#9A9A92] font-mono font-bold">
+                    {debateStep} / {totalSteps} SEATS
                   </span>
                 </div>
               </div>
 
               {/* Message scroll container */}
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2 select-text">
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 select-text">
                 {displayedMessages.map((msg, index) => {
                   const agent = agents.find(a => a.id === msg.agentId);
+                  const accentColor = getAgentColor(msg.agentId);
                   return (
                     <div
                       key={index}
-                      className="animate-fade-in-up flex items-start gap-3 bg-zinc-900/20 border border-zinc-850 p-4 rounded-xl hover:bg-zinc-900/30 transition-colors"
+                      className="animate-card-slide flex items-start gap-4 bg-[#16181A]/40 border border-zinc-850 p-4 rounded-r-xl transition-all duration-300"
+                      style={{ borderLeft: `3px solid ${accentColor}` }}
                     >
-                      <div className="text-3xl p-1 bg-zinc-950/80 rounded-lg border border-zinc-800/60 shadow-xs">
+                      {/* Avatar Circle with tinted background */}
+                      <div 
+                        className="h-10 w-10 rounded-full flex items-center justify-center text-xl shrink-0 border border-zinc-800/30"
+                        style={{ backgroundColor: `${accentColor}18` }}
+                      >
                         {msg.avatarEmoji}
                       </div>
                       
                       <div className="flex-1 space-y-1">
-                        <div className="flex items-baseline justify-between">
-                          <h3 className="text-sm font-semibold text-white">{msg.agentName}</h3>
-                          <span className="text-[10px] text-zinc-500 font-mono">
-                            {agent?.occupation || "Panelist"}
+                        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+                          <h3 className="text-sm font-semibold text-white font-sans">{msg.agentName}</h3>
+                          <span className="text-[9px] text-[#9A9A92] font-mono uppercase tracking-wider font-semibold">
+                            {agent?.occupation || "Panelist"} • {agent?.location.split(",")[0] || ""}
                           </span>
                         </div>
-                        <p className="text-sm text-zinc-300 leading-relaxed font-sans">{msg.content}</p>
+                        <p className="text-sm text-[#ECE8E1]/90 leading-relaxed font-sans font-light">{msg.content}</p>
                       </div>
                     </div>
                   );
@@ -550,8 +570,14 @@ export default function Dashboard() {
 
                 {/* Live Typing Simulator */}
                 {activeAgentId && (
-                  <div className="flex items-start gap-3 bg-zinc-900/40 border border-amber-600/20 p-4 rounded-xl animate-fade-in-up">
-                    <div className="text-3xl p-1 bg-zinc-950/80 rounded-lg border border-zinc-800/60 animate-pulse">
+                  <div 
+                    className="flex items-start gap-4 bg-[#16181A]/60 border border-zinc-850 p-4 rounded-r-xl animate-card-slide"
+                    style={{ borderLeft: `3px solid ${getAgentColor(activeAgentId)}` }}
+                  >
+                    <div 
+                      className="h-10 w-10 rounded-full flex items-center justify-center text-xl shrink-0 border border-zinc-800/30 animate-pulse"
+                      style={{ backgroundColor: `${getAgentColor(activeAgentId)}18` }}
+                    >
                       {agents.find(a => a.id === activeAgentId)?.avatar_emoji || "👤"}
                     </div>
                     <div className="flex-1 space-y-2">
@@ -559,14 +585,14 @@ export default function Dashboard() {
                         <h3 className="text-sm font-semibold text-white animate-pulse">
                           {agents.find(a => a.id === activeAgentId)?.name}
                         </h3>
-                        <span className="text-[10px] text-amber-500 font-mono">
-                          Deliberating...
+                        <span className="text-[10px] text-[#D4A24E] font-mono tracking-widest uppercase">
+                          RECORDING TESTIMONY...
                         </span>
                       </div>
                       <div className="py-2 flex items-center gap-1.5">
-                        <span className="typing-dot animate-bounce" />
-                        <span className="typing-dot animate-bounce delay-100" />
-                        <span className="typing-dot animate-bounce delay-200" />
+                        <span className="typing-dot" />
+                        <span className="typing-dot" />
+                        <span className="typing-dot" />
                       </div>
                     </div>
                   </div>
@@ -577,54 +603,72 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Verdict Summary Dashboard */}
+          {/* Verdict Summary Case File */}
           {(verdict || isGeneratingVerdict) && (
-            <div className="glass-card p-6 flex flex-col gap-6 animate-fade-in-up border-zinc-700/60 shadow-lg">
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                  📊 Executive Focus Group Verdict
+            <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-6 animate-card-slide">
+              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                <h2 className="text-xs font-semibold text-[#9A9A92] font-mono tracking-wider uppercase">
+                  📜 OFFICIAL TRIBUNAL VERDICT
                 </h2>
                 {isGeneratingVerdict && (
-                  <span className="text-xs text-zinc-500 flex items-center gap-1.5">
-                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-amber-500" />
-                    Generating analysis...
+                  <span className="text-[10px] text-[#D4A24E] font-mono uppercase tracking-widest flex items-center gap-1.5 animate-pulse">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#D4A24E]" />
+                    STAMPING FILE...
                   </span>
                 )}
               </div>
 
               {verdict && (
                 <div className="space-y-6">
-                  {/* Score & Summary Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Gauge Score Card */}
-                    <div className={`border rounded-xl p-5 flex flex-col items-center justify-center text-center gap-2 ${getScoreColor(verdict.overallScore)}`}>
-                      <span className="text-xs text-zinc-400 font-semibold tracking-wider uppercase">Public Appeal</span>
-                      <div className="relative flex items-center justify-center mt-1">
-                        <span className="text-4xl font-extrabold font-mono">{verdict.overallScore}</span>
-                        <span className="text-sm text-zinc-500 absolute -bottom-1 font-mono">/ 100</span>
+                  
+                  {/* Signature Element: The Verdict Seal Stamp & Case Summary */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                    
+                    {/* Rubber Stamp Seal container (rotated -6deg) */}
+                    <div className="md:col-span-5 flex flex-col items-center justify-center text-center py-4">
+                      <span className="font-serif text-sm font-medium text-[#D4A24E] tracking-wide mb-2">
+                        Public Appeal
+                      </span>
+                      
+                      {/* Double ring circular stamp */}
+                      <div className="verdict-seal-stamp h-[140px] w-[140px] rounded-full border-4 border-double border-[#D4A24E] flex flex-col items-center justify-center select-none shadow-[inset_0_0_12px_rgba(212,162,78,0.1)] relative">
+                        <div className="absolute inset-1 rounded-full border border-dashed border-[#D4A24E]/20" />
+                        
+                        <span className="text-4xl font-bold font-mono text-[#D4A24E] leading-none tracking-tight">
+                          {verdict.overallScore}
+                        </span>
+                        
+                        <span className="text-[10px] font-mono text-[#D4A24E]/80 tracking-widest mt-1">
+                          / 100
+                        </span>
                       </div>
-                      <span className="text-[11px] font-bold uppercase mt-3">
-                        {verdict.overallScore >= 70 ? "High Support" : verdict.overallScore >= 40 ? "Mixed / Polarized" : "Low Appeal"}
+                      
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-[#D4A24E] mt-3 font-bold">
+                        {verdict.overallScore >= 70 ? "HIGH SUPPORT" : verdict.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
                       </span>
                     </div>
 
-                    {/* Summary Paragraph */}
-                    <div className="md:col-span-2 bg-zinc-900/30 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-center gap-2">
-                      <span className="text-xs text-zinc-500 font-semibold uppercase">Verdict Summary</span>
-                      <p className="text-sm text-zinc-300 leading-relaxed font-sans italic">
+                    {/* Summary Paragraph styled as Case File Index */}
+                    <div className="md:col-span-7 bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-2 shadow-xs">
+                      <span className="text-[10px] text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
+                        JUDGMENT SUMMARY
+                      </span>
+                      <p className="text-sm text-[#ECE8E1]/90 leading-relaxed font-sans italic">
                         "{verdict.summary}"
                       </p>
                     </div>
+
                   </div>
 
-                  {/* Pros & Cons Columns */}
+                  {/* Case File Sheets: Support & Concerns */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Support column */}
-                    <div className="bg-emerald-950/5 border border-emerald-900/15 rounded-xl p-5 flex flex-col gap-3">
-                      <h3 className="text-xs font-bold text-emerald-500 uppercase tracking-wide flex items-center gap-1.5">
-                        <span className="text-sm">✓</span> Points of Support
+                    
+                    {/* Support card */}
+                    <div className="bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-3">
+                      <h3 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                        <span>✓</span> DETAILED FINDINGS OF SUPPORT
                       </h3>
-                      <ul className="space-y-2 text-xs text-zinc-300">
+                      <ul className="space-y-2.5 text-xs text-[#ECE8E1]/80">
                         {verdict.topSupport.map((item, idx) => (
                           <li key={idx} className="flex gap-2 leading-relaxed">
                             <span className="text-emerald-500 select-none">•</span>
@@ -634,12 +678,12 @@ export default function Dashboard() {
                       </ul>
                     </div>
 
-                    {/* Concerns column */}
-                    <div className="bg-rose-950/5 border border-rose-900/15 rounded-xl p-5 flex flex-col gap-3">
-                      <h3 className="text-xs font-bold text-rose-500 uppercase tracking-wide flex items-center gap-1.5">
-                        <span className="text-sm">⚠️</span> Top Concerns Raised
+                    {/* Concerns card */}
+                    <div className="bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-3">
+                      <h3 className="text-[10px] font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                        <span>⚠️</span> FORESEEN SYSTEMIC CONCERNS
                       </h3>
-                      <ul className="space-y-2 text-xs text-zinc-300">
+                      <ul className="space-y-2.5 text-xs text-[#ECE8E1]/80">
                         {verdict.topConcerns.map((item, idx) => (
                           <li key={idx} className="flex gap-2 leading-relaxed">
                             <span className="text-rose-500 select-none">•</span>
@@ -648,16 +692,19 @@ export default function Dashboard() {
                         ))}
                       </ul>
                     </div>
+
                   </div>
 
-                  {/* Polarizing Pair View */}
+                  {/* Polarizing Contentions Card */}
                   {verdict.mostPolarizingPair && (
-                    <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 flex flex-col gap-3">
-                      <span className="text-xs text-zinc-500 font-semibold uppercase">Most Polarizing Contention</span>
+                    <div className="bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-3">
+                      <span className="text-[10px] text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
+                        PRIMARY COUNCIL DISSENSION
+                      </span>
                       
-                      <div className="flex flex-col md:flex-row items-center gap-4 py-2">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 py-2">
                         {/* Agent 1 */}
-                        <div className="flex items-center gap-2 bg-zinc-950/60 px-3 py-2 rounded-lg border border-zinc-800/80 w-full md:w-auto">
+                        <div className="flex items-center gap-2 bg-[#1F2226] px-3 py-2 rounded-lg border border-zinc-800/80 w-full sm:w-auto">
                           <span className="text-xl">
                             {agents.find(a => a.name === verdict.mostPolarizingPair.agent1)?.avatar_emoji || "👤"}
                           </span>
@@ -667,12 +714,12 @@ export default function Dashboard() {
                         </div>
 
                         {/* VS symbol */}
-                        <span className="text-[10px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono font-bold uppercase">
+                        <span className="text-[9px] bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-2 py-0.5 rounded-full font-mono font-bold">
                           VS
                         </span>
 
                         {/* Agent 2 */}
-                        <div className="flex items-center gap-2 bg-zinc-950/60 px-3 py-2 rounded-lg border border-zinc-800/80 w-full md:w-auto">
+                        <div className="flex items-center gap-2 bg-[#1F2226] px-3 py-2 rounded-lg border border-zinc-800/80 w-full sm:w-auto">
                           <span className="text-xl">
                             {agents.find(a => a.name === verdict.mostPolarizingPair.agent2)?.avatar_emoji || "👤"}
                           </span>
@@ -682,8 +729,8 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      <p className="text-xs text-zinc-400 leading-relaxed font-sans">
-                        <strong className="text-zinc-200">Point of Disagreement:</strong> {verdict.mostPolarizingPair.reason}
+                      <p className="text-xs text-[#ECE8E1]/80 leading-relaxed font-sans">
+                        <strong className="text-white">Diverging Positions:</strong> {verdict.mostPolarizingPair.reason}
                       </p>
                     </div>
                   )}
@@ -695,8 +742,8 @@ export default function Dashboard() {
 
           {/* General Error Log */}
           {error && (
-            <div className="glass-card p-5 border-rose-950/50 bg-rose-950/5 text-rose-400 flex flex-col gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-rose-500">⚠️ Simulation Error</span>
+            <div className="bg-[#1F2226] p-5 border border-rose-900/30 text-rose-400 rounded-xl flex flex-col gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-500 font-mono">⚠️ DEPOSITION ERROR</span>
               <p className="text-xs leading-relaxed font-mono whitespace-pre-wrap">{error}</p>
             </div>
           )}
@@ -706,10 +753,10 @@ export default function Dashboard() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-900 bg-zinc-950/40 py-6 mt-12 text-center text-xs text-zinc-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <p>© {new Date().getFullYear()} MirrorRoom. Built with Next.js & NVIDIA NIM API.</p>
-          <p>Bring-Your-Own-API-key model. All computations run in your session.</p>
+      <footer className="border-t border-zinc-900 bg-[#1F2226]/20 py-6 mt-12 text-center text-xs text-[#9A9A92]">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-4 font-mono">
+          <p>© {new Date().getFullYear()} MIRRORROOM. ALL TESTIMONIES ARCHIVED SECURELY.</p>
+          <p>POWERED BY NVIDIA NIM DIRECT CONNECTIONS.</p>
         </div>
       </footer>
     </div>
