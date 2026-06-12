@@ -1,0 +1,13 @@
+{
+  "id": "malaysian-society",
+  "name": "Malaysian Society",
+  "description": "A cross-section of Malaysian voices — different ethnicities, generations, income levels, and regions. Good for testing local products, policies, or community ideas.",
+  "agent_ids": [
+    "pakcik-roslan",
+    "gen-z-kl-creative",
+    "indian-teacher-ipoh",
+    "chinese-business-owner-penang",
+    "young-mother-shah-alam",
+    "tech-bro-cyberjaya"
+  ]
+}

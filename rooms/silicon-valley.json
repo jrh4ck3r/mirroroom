@@ -1,0 +1,11 @@
+{
+  "id": "silicon-valley",
+  "name": "Silicon Valley",
+  "description": "The investor, the builder, and the skeptic. Good for stress-testing startup ideas, product launches, and pitches before you take them anywhere near a real room.",
+  "agent_ids": [
+    "vc-investor",
+    "skeptical-engineer",
+    "twitter-skeptic",
+    "tech-bro-cyberjaya"
+  ]
+}

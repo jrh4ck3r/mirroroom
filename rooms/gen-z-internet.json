@@ -1,0 +1,10 @@
+{
+  "id": "gen-z-internet",
+  "name": "Gen Z Internet",
+  "description": "Chronically online voices that will make or break your idea on social media before anyone else even sees it. Good for testing anything that needs to go viral.",
+  "agent_ids": [
+    "gen-z-kl-creative",
+    "twitter-skeptic",
+    "tech-bro-cyberjaya"
+  ]
+}
