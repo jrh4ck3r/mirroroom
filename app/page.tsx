@@ -52,6 +52,10 @@ export default function Dashboard() {
   const [displayedMessages, setDisplayedMessages] = useState<DebateMessage[]>([]);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [isGeneratingVerdict, setIsGeneratingVerdict] = useState(false);
+
+  // Streaming loop step tracking
+  const [debateStep, setDebateStep] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
   
   // UI helper states
   const [showKey, setShowKey] = useState(false);
@@ -124,7 +128,7 @@ export default function Dashboard() {
     setSelectedRoomId(ex.room);
   };
 
-  // Run the sequential focus group simulation
+  // Run the sequential focus group simulation step-by-step
   const handleRunSimulation = async () => {
     if (!apiKey) {
       setError("Please provide a valid NVIDIA API Key first.");
@@ -139,89 +143,87 @@ export default function Dashboard() {
     setVerdict(null);
     setDisplayedMessages([]);
     setIsDebating(true);
-    setStatusText("Deliberating... Connecting to the LLM panel...");
+    setStatusText("Initializing focus group panel...");
     setActiveAgentId(null);
 
+    // Resolve room agents
+    const currentRoom = rooms.find(r => r.id === selectedRoomId);
+    if (!currentRoom) {
+      setError("Selected room preset not found.");
+      setIsDebating(false);
+      return;
+    }
+
+    const roomAgentIds = currentRoom.agent_ids;
+    setTotalSteps(roomAgentIds.length);
+    setDebateStep(0);
+
+    const accumulatedTranscript: DebateMessage[] = [];
+
     try {
-      // 1. Fetch the debate stream
-      const res = await fetch("/api/debate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, ideaText, roomId: selectedRoomId })
-      });
+      // Loop sequentially through each agent in the panel
+      for (let i = 0; i < roomAgentIds.length; i++) {
+        const agentId = roomAgentIds[i];
+        const agent = agents.find(a => a.id === agentId);
+        const name = agent ? agent.name : "Panelist";
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to run debate (HTTP ${res.status})`);
-      }
+        // Show active agent indicator
+        setActiveAgentId(agentId);
+        setStatusText(`${name} is deliberating...`);
 
-      if (!res.body) {
-        throw new Error("No response stream body found");
-      }
+        // Post request for the specific agent step
+        const res = await fetch("/api/debate/step", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey,
+            ideaText,
+            agentId,
+            priorMessages: accumulatedTranscript,
+            round: 1
+          })
+        });
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-      const collectedMessages: any[] = [];
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // keep partial last line in buffer
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          if (trimmed.startsWith("data: ")) {
-            const dataStr = trimmed.substring(6);
-            try {
-              const data = JSON.parse(dataStr);
-              if (data.type === "status") {
-                setActiveAgentId(data.agentId);
-                setStatusText(`${data.name} is writing their response...`);
-              } else if (data.type === "message") {
-                const msg = data.message;
-                // Add the completed message to the visible transcript
-                setDisplayedMessages(prev => [...prev, msg]);
-                // Keep track of the collected messages for verdict generation
-                collectedMessages.push({
-                  agentId: msg.agentId,
-                  name: msg.agentName,
-                  avatarEmoji: msg.avatarEmoji,
-                  response: msg.content
-                });
-              } else if (data.type === "error") {
-                throw new Error(data.error);
-              } else if (data.type === "end") {
-                console.log("Stream ended successfully");
-              }
-            } catch (jsonErr) {
-              console.error("Error parsing stream event JSON:", jsonErr, trimmed);
-            }
-          }
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Error generating response for ${name} (HTTP ${res.status})`);
         }
+
+        const msg: DebateMessage = data.message;
+        
+        // Add to transcript for downstream agent context
+        accumulatedTranscript.push(msg);
+
+        // Update UI transcript and counter
+        setDisplayedMessages(prev => [...prev, msg]);
+        setDebateStep(i + 1);
       }
 
-      // Complete transcript playing
+      // Complete debate step loop
       setActiveAgentId(null);
 
-      // Verify if we collected any messages
-      if (collectedMessages.length === 0) {
+      // Verify if we collected responses
+      if (accumulatedTranscript.length === 0) {
         throw new Error("Simulation completed but no agent responses were received.");
       }
 
-      // 2. Request Verdict analysis after debate completes
+      // 2. Request Verdict analysis
       setIsGeneratingVerdict(true);
-      setStatusText("Focus group complete. Synthesizing verdict analysis...");
+      setStatusText("Focus group complete. Synthesizing final verdict...");
       
       const verdictRes = await fetch("/api/verdict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, ideaText, transcript: collectedMessages })
+        body: JSON.stringify({
+          apiKey,
+          ideaText,
+          transcript: accumulatedTranscript.map(m => ({
+            agentId: m.agentId,
+            name: m.agentName,
+            avatarEmoji: m.avatarEmoji,
+            response: m.content
+          }))
+        })
       });
       
       const verdictData = await verdictRes.json();
@@ -345,7 +347,11 @@ export default function Dashboard() {
                   <button
                     key={room.id}
                     onClick={() => {
-                      if (!isDebating) setSelectedRoomId(room.id);
+                      if (!isDebating) {
+                        setSelectedRoomId(room.id);
+                        setDisplayedMessages([]);
+                        setVerdict(null);
+                      }
                     }}
                     disabled={isDebating}
                     id={`room-select-${room.id}`}
@@ -430,54 +436,89 @@ export default function Dashboard() {
 
         </section>
 
-        {/* Right Column: Debate Stream & Verdict Dashboard (7 cols) */}
+        {/* Right Column: Panelist Status, Live Transcript & Scorecards (7 cols) */}
         <section className="lg:col-span-7 flex flex-col gap-6">
           
-          {/* Panelists / Demographics Grid (Shows before starting debate) */}
-          {displayedMessages.length === 0 && !isDebating && (
-            <div className="glass-card p-6 flex flex-col gap-4">
-              <h2 className="text-sm font-semibold text-zinc-200">
-                👥 Selected Room Demographics ({currentRoomAgents.length} Panelists)
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {currentRoomAgents.map((agent) => (
+          {/* Panelists Status Monitor (Stays visible at all times for high visual feedback) */}
+          <div className="glass-card p-6 flex flex-col gap-4">
+            <h2 className="text-sm font-semibold text-zinc-200 flex justify-between items-center">
+              <span>👥 Focus Group Panelists ({currentRoomAgents.length})</span>
+              {isDebating && (
+                <span className="text-xs bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-0.5 rounded-sm font-mono animate-pulse">
+                  SIMULATION ACTIVE
+                </span>
+              )}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {currentRoomAgents.map((agent) => {
+                const isSpeaking = activeAgentId === agent.id;
+                const hasSpoken = displayedMessages.some(m => m.agentId === agent.id);
+                
+                let cardClass = "border-zinc-800/80 bg-zinc-900/30 opacity-60";
+                if (isSpeaking) {
+                  cardClass = "border-amber-500 bg-amber-500/5 shadow-[0_0_15px_rgba(217,119,6,0.1)] ring-1 ring-amber-500/20 animate-pulse-border";
+                } else if (hasSpoken) {
+                  cardClass = "border-emerald-500/25 bg-emerald-500/2 opacity-90";
+                }
+
+                return (
                   <div 
                     key={agent.id}
-                    className="p-3 bg-zinc-900/30 border border-zinc-800/80 rounded-lg flex gap-3 text-xs"
+                    className={`p-3 border rounded-xl flex gap-2.5 transition-all duration-300 relative text-xs ${cardClass}`}
                   >
-                    <span className="text-2xl self-start">{agent.avatar_emoji}</span>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-zinc-100">{agent.name}</span>
-                      <span className="text-[11px] text-zinc-400">
-                        {agent.age}yo • {agent.occupation}
-                      </span>
-                      <span className="text-[10px] text-zinc-500">
-                        📍 {agent.location.split(",").slice(0, 2).join(",")}
-                      </span>
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {agent.personality_traits.slice(0, 2).map((t, idx) => (
-                          <span key={idx} className="bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-sm text-[9px] font-mono capitalize">
-                            {t}
+                    <span className={`text-2xl self-start ${isSpeaking ? "animate-bounce" : ""}`}>{agent.avatar_emoji}</span>
+                    <div className="flex flex-col gap-0.5 overflow-hidden">
+                      <div className="flex items-center gap-1.5 w-full justify-between">
+                        <span className="font-semibold text-zinc-100 truncate">{agent.name}</span>
+                        {isSpeaking && (
+                          <span className="flex h-1.5 w-1.5 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
                           </span>
-                        ))}
+                        )}
+                        {hasSpoken && (
+                          <span className="text-emerald-500 font-bold text-[10px] font-sans">✓</span>
+                        )}
                       </div>
+                      <span className="text-[10px] text-zinc-400 truncate">{agent.occupation}</span>
+                      <span className="text-[9px] text-zinc-500 truncate">{agent.location.split(",")[0]}</span>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          )}
+          </div>
 
           {/* Debate Transcript Box */}
           {(displayedMessages.length > 0 || isDebating) && (
             <div className="glass-card p-6 flex flex-col min-h-[400px] max-h-[600px]">
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
-                <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                  💬 Live Focus Group Debate
-                </h2>
-                <div className="flex items-center gap-2 text-xs text-zinc-400">
-                  <span className={`inline-block h-2 w-2 rounded-full ${isDebating ? "bg-amber-500 animate-ping" : "bg-zinc-600"}`} />
-                  <span>{statusText}</span>
+              
+              {/* Header with Progress Indicators */}
+              <div className="flex flex-col gap-3 border-b border-zinc-800 pb-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+                    💬 Live Focus Group Debate
+                  </h2>
+                  <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono">
+                    {isDebating ? (
+                      <span className="text-amber-500 animate-pulse">{statusText}</span>
+                    ) : (
+                      <span className="text-zinc-500">Deliberation Concluded</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Glow Progress Bar */}
+                <div className="flex items-center gap-3 w-full">
+                  <div className="flex-1 bg-zinc-950 border border-zinc-800/80 rounded-full h-2.5 overflow-hidden relative">
+                    <div 
+                      className="bg-amber-600 h-2 rounded-full transition-all duration-700 ease-out shadow-[0_0_12px_rgba(217,119,6,0.6)]" 
+                      style={{ width: `${(debateStep / totalSteps) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-zinc-400 font-mono font-semibold whitespace-nowrap">
+                    {debateStep} / {totalSteps}
+                  </span>
                 </div>
               </div>
 
@@ -488,7 +529,7 @@ export default function Dashboard() {
                   return (
                     <div
                       key={index}
-                      className="animate-fade-in-up flex items-start gap-3 bg-zinc-900/20 border border-zinc-800/40 p-4 rounded-xl"
+                      className="animate-fade-in-up flex items-start gap-3 bg-zinc-900/20 border border-zinc-850 p-4 rounded-xl hover:bg-zinc-900/30 transition-colors"
                     >
                       <div className="text-3xl p-1 bg-zinc-950/80 rounded-lg border border-zinc-800/60 shadow-xs">
                         {msg.avatarEmoji}
@@ -519,13 +560,13 @@ export default function Dashboard() {
                           {agents.find(a => a.id === activeAgentId)?.name}
                         </h3>
                         <span className="text-[10px] text-amber-500 font-mono">
-                          Writing response...
+                          Deliberating...
                         </span>
                       </div>
                       <div className="py-2 flex items-center gap-1.5">
-                        <span className="typing-dot" />
-                        <span className="typing-dot" />
-                        <span className="typing-dot" />
+                        <span className="typing-dot animate-bounce" />
+                        <span className="typing-dot animate-bounce delay-100" />
+                        <span className="typing-dot animate-bounce delay-200" />
                       </div>
                     </div>
                   </div>
@@ -538,7 +579,7 @@ export default function Dashboard() {
 
           {/* Verdict Summary Dashboard */}
           {(verdict || isGeneratingVerdict) && (
-            <div className="glass-card p-6 flex flex-col gap-6 animate-fade-in-up">
+            <div className="glass-card p-6 flex flex-col gap-6 animate-fade-in-up border-zinc-700/60 shadow-lg">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
                 <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
                   📊 Executive Focus Group Verdict
@@ -579,7 +620,7 @@ export default function Dashboard() {
                   {/* Pros & Cons Columns */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Support column */}
-                    <div className="bg-emerald-950/5 border border-emerald-900/10 rounded-xl p-5 flex flex-col gap-3">
+                    <div className="bg-emerald-950/5 border border-emerald-900/15 rounded-xl p-5 flex flex-col gap-3">
                       <h3 className="text-xs font-bold text-emerald-500 uppercase tracking-wide flex items-center gap-1.5">
                         <span className="text-sm">✓</span> Points of Support
                       </h3>
@@ -594,7 +635,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* Concerns column */}
-                    <div className="bg-rose-950/5 border border-rose-900/10 rounded-xl p-5 flex flex-col gap-3">
+                    <div className="bg-rose-950/5 border border-rose-900/15 rounded-xl p-5 flex flex-col gap-3">
                       <h3 className="text-xs font-bold text-rose-500 uppercase tracking-wide flex items-center gap-1.5">
                         <span className="text-sm">⚠️</span> Top Concerns Raised
                       </h3>
