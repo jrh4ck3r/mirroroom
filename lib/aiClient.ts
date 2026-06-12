@@ -1,21 +1,36 @@
 import { AgentProfile, DebateMessage } from "./types";
 import { renderSystemPrompt } from "./agentLoader";
 
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-6";
-const MAX_TOKENS = 300; // Keep responses punchy: 2-4 sentences
+const NIM_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
+const DEFAULT_MODEL = process.env.NIM_MODEL || "meta/llama-3.3-70b-instruct";
+const MAX_TOKENS = 300;
+const TEMPERATURE = 0.7;
+const TOP_P = 0.9;
+
+/** OpenAI-compatible message shape */
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
 
 /**
- * Build the messages array for an agent's API call.
- * Includes the idea prompt and any prior debate messages as context
- * so agents can reference what others have said.
+ * Build the OpenAI-compatible messages array for an agent's API call.
+ * - system message: the rendered agent persona prompt
+ * - user message: the idea + prior debate context
  */
 function buildMessages(
+  agent: AgentProfile,
   idea: string,
   priorMessages: DebateMessage[],
   round: number
-): Array<{ role: "user" | "assistant"; content: string }> {
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+
+  // System prompt: the agent's rendered persona
+  messages.push({
+    role: "system",
+    content: renderSystemPrompt(agent),
+  });
 
   if (round === 1) {
     // First round: present the idea, include any prior agent responses as context
@@ -60,10 +75,10 @@ function buildMessages(
 }
 
 /**
- * Call Claude with a single agent's persona to get their reaction.
+ * Call NVIDIA NIM API with a single agent's persona to get their reaction.
  * Returns the raw text response.
  *
- * @param apiKey - User's Anthropic API key (passed from client, never stored)
+ * @param apiKey - User's NVIDIA API key (passed from client, never stored)
  * @param agent - The agent profile to use
  * @param idea - The idea being debated
  * @param priorMessages - Messages from agents who have already spoken
@@ -76,47 +91,45 @@ export async function getAgentResponse(
   priorMessages: DebateMessage[],
   round: number
 ): Promise<string> {
-  const systemPrompt = renderSystemPrompt(agent);
-  const messages = buildMessages(idea, priorMessages, round);
+  const messages = buildMessages(agent, idea, priorMessages, round);
 
-  const response = await fetch(ANTHROPIC_API_URL, {
+  const response = await fetch(NIM_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
+      model: DEFAULT_MODEL,
       messages,
+      temperature: TEMPERATURE,
+      top_p: TOP_P,
+      max_tokens: MAX_TOKENS,
+      stream: false,
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `Anthropic API error (${response.status}): ${errorBody}`
+      `NVIDIA NIM API error (${response.status}): ${errorBody}`
     );
   }
 
   const data = await response.json();
 
-  // Extract text from the response content blocks
-  const textBlocks = data.content?.filter(
-    (block: { type: string }) => block.type === "text"
-  );
-  if (!textBlocks || textBlocks.length === 0) {
-    throw new Error("No text content in Anthropic response");
+  // OpenAI-compatible response shape
+  const choice = data.choices?.[0];
+  if (!choice || !choice.message?.content) {
+    throw new Error("No content in NVIDIA NIM API response");
   }
 
-  return textBlocks.map((b: { text: string }) => b.text).join("");
+  return choice.message.content;
 }
 
 /**
- * Stream an agent's response from Claude.
- * Returns a ReadableStream that emits text chunks as they arrive.
+ * Stream an agent's response from NVIDIA NIM API.
+ * Returns a ReadableStream of SSE chunks in OpenAI streaming format.
  */
 export async function streamAgentResponse(
   apiKey: string,
@@ -125,49 +138,48 @@ export async function streamAgentResponse(
   priorMessages: DebateMessage[],
   round: number
 ): Promise<ReadableStream<Uint8Array>> {
-  const systemPrompt = renderSystemPrompt(agent);
-  const messages = buildMessages(idea, priorMessages, round);
+  const messages = buildMessages(agent, idea, priorMessages, round);
 
-  const response = await fetch(ANTHROPIC_API_URL, {
+  const response = await fetch(NIM_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: DEFAULT_MODEL,
+      messages,
+      temperature: TEMPERATURE,
+      top_p: TOP_P,
       max_tokens: MAX_TOKENS,
       stream: true,
-      system: systemPrompt,
-      messages,
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `Anthropic API error (${response.status}): ${errorBody}`
+      `NVIDIA NIM API error (${response.status}): ${errorBody}`
     );
   }
 
   if (!response.body) {
-    throw new Error("No response body from Anthropic streaming API");
+    throw new Error("No response body from NVIDIA NIM streaming API");
   }
 
   return response.body;
 }
 
 /**
- * Generate the final verdict by sending the full transcript to Claude.
+ * Generate the final verdict by sending the full transcript to the LLM.
  * Returns raw JSON string for parsing by the caller.
  */
 export async function generateVerdict(
   apiKey: string,
   idea: string,
-  messages: DebateMessage[]
+  debateMessages: DebateMessage[]
 ): Promise<string> {
-  const transcriptLines = messages.map(
+  const transcriptLines = debateMessages.map(
     (m) =>
       `[Round ${m.round}] ${m.avatarEmoji} ${m.agentName}: "${m.content}"`
   );
@@ -183,35 +195,37 @@ Return ONLY the JSON object, no markdown formatting, no explanation.`;
 
   const userMessage = `Here is the idea that was debated:\n\n"${idea}"\n\nHere is the full debate transcript:\n\n${transcriptLines.join("\n")}\n\nNow produce the verdict JSON.`;
 
-  const response = await fetch(ANTHROPIC_API_URL, {
+  const response = await fetch(NIM_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: DEFAULT_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      temperature: TEMPERATURE,
+      top_p: TOP_P,
       max_tokens: 500,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
+      stream: false,
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `Anthropic API error (${response.status}): ${errorBody}`
+      `NVIDIA NIM API error (${response.status}): ${errorBody}`
     );
   }
 
   const data = await response.json();
-  const textBlocks = data.content?.filter(
-    (block: { type: string }) => block.type === "text"
-  );
-  if (!textBlocks || textBlocks.length === 0) {
-    throw new Error("No text content in verdict response");
+  const choice = data.choices?.[0];
+  if (!choice || !choice.message?.content) {
+    throw new Error("No content in verdict response");
   }
 
-  return textBlocks.map((b: { text: string }) => b.text).join("");
+  return choice.message.content;
 }

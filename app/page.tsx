@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 /**
- * Minimal test harness for the data loading pipeline + Claude API call.
+ * Minimal test harness for the data loading pipeline + NVIDIA NIM API call.
  * This is NOT the final UI — just a way to verify everything works end-to-end.
  */
 export default function TestPage() {
@@ -55,19 +55,27 @@ export default function TestPage() {
         🪞 MirrorRoom — Pipeline Test
       </h1>
       <p style={{ color: "#888", marginBottom: "2rem" }}>
-        Tests: agent loader → room loader → prompt rendering → Claude API call
+        Tests: agent loader → room loader → prompt rendering → NVIDIA NIM API call
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <label>
           <span style={{ display: "block", marginBottom: "0.25rem", color: "#aaa" }}>
-            Anthropic API Key
+            NVIDIA API Key{" "}
+            <a
+              href="https://build.nvidia.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#76b900", fontSize: "0.85em" }}
+            >
+              Get a free key →
+            </a>
           </span>
           <input
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-ant-..."
+            placeholder="nvapi-..."
             style={{
               width: "100%",
               padding: "0.5rem",
@@ -139,7 +147,7 @@ export default function TestPage() {
             fontSize: "1rem",
           }}
         >
-          {loading ? "Calling Claude..." : "Test Single Agent Call"}
+          {loading ? "Calling NIM..." : "Test Single Agent Call"}
         </button>
       </div>
 

@@ -82,7 +82,7 @@ export function loadAllAgentsArray(): AgentProfile[] {
 
 /**
  * Render an agent's system_prompt_template by substituting {{field}} placeholders
- * with the agent's own data. This is the prompt sent to Claude.
+ * with the agent's own data. This is the prompt sent to the LLM.
  */
 export function renderSystemPrompt(agent: AgentProfile): string {
   let prompt = agent.system_prompt_template;

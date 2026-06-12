@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadRoomById } from "@/lib/roomLoader";
 import { resolveRoomAgents } from "@/lib/roomLoader";
-import { getAgentResponse } from "@/lib/anthropicClient";
+import { getAgentResponse } from "@/lib/aiClient";
 import { DebateMessage } from "@/lib/types";
 
 /**
  * POST /api/debate/test
  *
  * Minimal test endpoint: takes an API key, idea, and room ID,
- * picks the first agent in the room, and calls Claude once.
+ * picks the first agent in the room, and calls the LLM once via NVIDIA NIM.
  *
  * Body: { apiKey: string, idea: string, roomId: string }
  */
@@ -54,11 +54,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Pick the first agent and call Claude
+    // Pick the first agent and call the LLM
     const firstAgent = agents[0];
     const priorMessages: DebateMessage[] = [];
 
-    console.log(`[test] Calling Claude as "${firstAgent.name}" (${firstAgent.id})...`);
+    console.log(`[test] Calling NIM as "${firstAgent.name}" (${firstAgent.id})...`);
 
     const response = await getAgentResponse(
       apiKey,
