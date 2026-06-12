@@ -9,15 +9,21 @@ import { DebateMessage } from "@/lib/types";
  * Runs a single agent's response in the debate.
  * Receives the idea, the specific agent ID, and the running transcript of prior messages.
  *
- * Body: { apiKey: string, ideaText: string, agentId: string, priorMessages: DebateMessage[], round?: number }
+ * Body: { apiKey: string, providerConfig?: any, ideaText: string, agentId: string, priorMessages: DebateMessage[], round?: number }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apiKey, ideaText, agentId, priorMessages, round = 1 } = body;
+    const { apiKey, providerConfig, ideaText, agentId, priorMessages, round = 1 } = body;
 
     // Resolve API key flexibly (body, Authorization header, or environment variable)
     let finalApiKey = apiKey;
+
+    // If local provider (Ollama or LM Studio), set dummy key to satisfy validation if missing
+    if (providerConfig && (providerConfig.provider === "ollama" || providerConfig.provider === "lm-studio")) {
+      if (!finalApiKey) finalApiKey = "dummy_key";
+    }
+
     if (!finalApiKey) {
       const authHeader = request.headers.get("Authorization");
       if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -31,7 +37,7 @@ export async function POST(request: NextRequest) {
     // Validate inputs
     if (!finalApiKey || typeof finalApiKey !== "string") {
       return NextResponse.json(
-        { error: "Missing or invalid NVIDIA API Key." },
+        { error: "Missing or invalid API Key. Please configure it in Settings." },
         { status: 400 }
       );
     }
@@ -63,7 +69,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[debate-step] Calling LLM for agent "${agent.name}" (${agent.id})`);
+    console.log(`[debate-step] Calling LLM for agent "${agent.name}" (${agent.id}) via provider "${providerConfig?.provider || "nvidia"}"`);
 
     // Clean prior messages for getAgentResponse context
     const cleanPriorMessages: DebateMessage[] = priorMessages.map((m: any) => ({
@@ -81,7 +87,8 @@ export async function POST(request: NextRequest) {
       agent,
       ideaText,
       cleanPriorMessages,
-      round
+      round,
+      providerConfig
     );
 
     const message: DebateMessage = {

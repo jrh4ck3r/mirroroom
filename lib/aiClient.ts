@@ -1,4 +1,4 @@
-import { AgentProfile, DebateMessage } from "./types";
+import { AgentProfile, DebateMessage, ProviderConfig } from "./types";
 import { renderSystemPrompt } from "./agentLoader";
 
 const NIM_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
@@ -14,9 +14,43 @@ interface ChatMessage {
 }
 
 /**
+ * Dynamically resolves target request endpoint, authorization headers,
+ * and model names based on the provider config settings.
+ */
+function getRequestConfig(apiKey: string, providerConfig?: ProviderConfig) {
+  let url = NIM_API_URL;
+  let authHeader = `Bearer ${apiKey}`;
+  let model = DEFAULT_MODEL;
+
+  if (providerConfig) {
+    const { provider, baseUrl, apiKey: configKey, modelName } = providerConfig;
+    if (provider === "nvidia") {
+      url = NIM_API_URL;
+      authHeader = `Bearer ${configKey || apiKey}`;
+      model = modelName || DEFAULT_MODEL;
+    } else if (provider === "ollama") {
+      const base = (baseUrl || "http://localhost:11434/v1").replace(/\/$/, "");
+      url = `${base}/chat/completions`;
+      authHeader = `Bearer ${configKey || "dummy_key"}`;
+      model = modelName || "llama3.1:70b";
+    } else if (provider === "lm-studio") {
+      const base = (baseUrl || "http://localhost:1234/v1").replace(/\/$/, "");
+      url = `${base}/chat/completions`;
+      authHeader = `Bearer ${configKey || "dummy_key"}`;
+      model = modelName || ""; // LM studio can pick whatever default model is loaded
+    } else if (provider === "custom") {
+      const base = (baseUrl || "").replace(/\/$/, "");
+      url = `${base}/chat/completions`;
+      authHeader = `Bearer ${configKey || apiKey || "dummy_key"}`;
+      model = modelName || DEFAULT_MODEL;
+    }
+  }
+
+  return { url, authHeader, model };
+}
+
+/**
  * Build the OpenAI-compatible messages array for an agent's API call.
- * - system message: the rendered agent persona prompt
- * - user message: the idea + prior debate context
  */
 function buildMessages(
   agent: AgentProfile,
@@ -75,32 +109,28 @@ function buildMessages(
 }
 
 /**
- * Call NVIDIA NIM API with a single agent's persona to get their reaction.
+ * Call the selected API provider with a single agent's persona to get their reaction.
  * Returns the raw text response.
- *
- * @param apiKey - User's NVIDIA API key (passed from client, never stored)
- * @param agent - The agent profile to use
- * @param idea - The idea being debated
- * @param priorMessages - Messages from agents who have already spoken
- * @param round - 1 for initial reactions, 2 for cross-reactions
  */
 export async function getAgentResponse(
   apiKey: string,
   agent: AgentProfile,
   idea: string,
   priorMessages: DebateMessage[],
-  round: number
+  round: number,
+  providerConfig?: ProviderConfig
 ): Promise<string> {
   const messages = buildMessages(agent, idea, priorMessages, round);
+  const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
 
-  const response = await fetch(NIM_API_URL, {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: authHeader,
     },
     body: JSON.stringify({
-      model: DEFAULT_MODEL,
+      model: model,
       messages,
       temperature: TEMPERATURE,
       top_p: TOP_P,
@@ -112,7 +142,7 @@ export async function getAgentResponse(
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `NVIDIA NIM API error (${response.status}): ${errorBody}`
+      `LLM API error (${response.status}): ${errorBody}`
     );
   }
 
@@ -121,14 +151,14 @@ export async function getAgentResponse(
   // OpenAI-compatible response shape
   const choice = data.choices?.[0];
   if (!choice || !choice.message?.content) {
-    throw new Error("No content in NVIDIA NIM API response");
+    throw new Error("No content in LLM API response");
   }
 
   return choice.message.content;
 }
 
 /**
- * Stream an agent's response from NVIDIA NIM API.
+ * Stream an agent's response from LLM API.
  * Returns a ReadableStream of SSE chunks in OpenAI streaming format.
  */
 export async function streamAgentResponse(
@@ -136,18 +166,20 @@ export async function streamAgentResponse(
   agent: AgentProfile,
   idea: string,
   priorMessages: DebateMessage[],
-  round: number
+  round: number,
+  providerConfig?: ProviderConfig
 ): Promise<ReadableStream<Uint8Array>> {
   const messages = buildMessages(agent, idea, priorMessages, round);
+  const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
 
-  const response = await fetch(NIM_API_URL, {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: authHeader,
     },
     body: JSON.stringify({
-      model: DEFAULT_MODEL,
+      model: model,
       messages,
       temperature: TEMPERATURE,
       top_p: TOP_P,
@@ -159,12 +191,12 @@ export async function streamAgentResponse(
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `NVIDIA NIM API error (${response.status}): ${errorBody}`
+      `LLM API error (${response.status}): ${errorBody}`
     );
   }
 
   if (!response.body) {
-    throw new Error("No response body from NVIDIA NIM streaming API");
+    throw new Error("No response body from LLM streaming API");
   }
 
   return response.body;
@@ -177,7 +209,8 @@ export async function streamAgentResponse(
 export async function generateVerdict(
   apiKey: string,
   idea: string,
-  debateMessages: DebateMessage[]
+  debateMessages: DebateMessage[],
+  providerConfig?: ProviderConfig
 ): Promise<string> {
   const transcriptLines = debateMessages.map(
     (m) =>
@@ -195,14 +228,16 @@ Return ONLY the JSON object, no markdown formatting, no explanation.`;
 
   const userMessage = `Here is the idea that was debated:\n\n"${idea}"\n\nHere is the full debate transcript:\n\n${transcriptLines.join("\n")}\n\nNow produce the verdict JSON.`;
 
-  const response = await fetch(NIM_API_URL, {
+  const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
+
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: authHeader,
     },
     body: JSON.stringify({
-      model: DEFAULT_MODEL,
+      model: model,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -217,7 +252,7 @@ Return ONLY the JSON object, no markdown formatting, no explanation.`;
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `NVIDIA NIM API error (${response.status}): ${errorBody}`
+      `LLM API error (${response.status}): ${errorBody}`
     );
   }
 

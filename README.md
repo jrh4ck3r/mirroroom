@@ -110,14 +110,49 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to view the 
 
 ---
 
-## 🛠 Customizing the AI Provider
+## 🛠 Local Engine Settings & Multi-Provider Support
 
-Although built to run out-of-the-box with **NVIDIA's NIM API**, MirrorRoom is fully provider-agnostic. Since the client is OpenAI-compatible, you can point it to alternative LLM backends (like Groq, OpenAI, or a local Ollama instance) by editing the base configuration inside [lib/aiClient.ts](file:///e:/mirroroom/lib/aiClient.ts):
+MirrorRoom supports cloud API options as well as running fully offline on your own machine. Click the **⚙️ Settings** icon in the header to configure the LLM backend.
 
-```typescript
-// Modify these variables to target your custom API endpoint
-const NIM_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-```
+### 1. NVIDIA NIM (Cloud)
+- Default out-of-the-box provider.
+- Requires an API Key from [build.nvidia.com](https://build.nvidia.com) (free tier key available).
+- Uses `meta/llama-3.3-70b-instruct` by default.
+
+### 2. Run Fully Offline with Ollama
+- Install [Ollama](https://ollama.com) on your local machine.
+- Pull a compatible model (we recommend `llama3.1:70b` for full persona nuance, but smaller models like `llama3.1:8b` or `mistral:7b` work as well for testing):
+  ```bash
+  ollama pull llama3.1:70b
+  ```
+- In MirrorRoom Settings:
+  - Choose **Ollama (local)**.
+  - Set the base URL (default: `http://localhost:11434/v1`).
+  - Enter your pulled Model ID (e.g. `llama3.1:70b`).
+- No API key is needed. Internet connection is not required after loading page assets.
+
+### 3. Run Fully Offline with LM Studio
+- Install [LM Studio](https://lmstudio.ai).
+- Download and load your model of choice.
+- Start the Local Server in LM Studio (default port: `1234`).
+- In MirrorRoom Settings:
+  - Choose **LM Studio (local)**.
+  - Set the base URL (default: `http://localhost:1234/v1`).
+- MirrorRoom will automatically use whichever model is currently active in the LM Studio application.
+
+### 4. Custom OpenAI-Compatible Endpoints
+- Point to any OpenAI-compatible custom gateway (like Groq, OpenRouter, or self-hosted vLLM servers).
+- Set your Custom Base URL, API Key (optional), and Target Model Name.
+
+---
+
+## 📂 Local Debate History Database
+
+All focus group simulations are automatically saved locally at the end of each debate session.
+- Database Engine: **SQLite3** via `better-sqlite3`.
+- Persistence File: `data/debates.db` located at the root of the project (gitignored by default).
+- **Privacy:** Your debate records, concepts, transcripts, and verdicts are stored entirely on your local machine and never leave your self-hosted instance.
+- To view previous debates, click **📂 Docket Archive** in the header. Dockets can be opened in read-only review, deleted, or cleared all at once.
 
 ---
 

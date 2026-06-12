@@ -7,17 +7,23 @@ import { DebateMessage } from "@/lib/types";
  *
  * Generates an analytical summary and scorecard for a given idea and debate transcript.
  *
- * Body: { apiKey: string, ideaText: string, transcript: any[] }
+ * Body: { apiKey: string, providerConfig?: any, ideaText: string, transcript: any[] }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apiKey, ideaText, transcript } = body;
+    const { apiKey, providerConfig, ideaText, transcript } = body;
+
+    let finalApiKey = apiKey;
+    // Bypass key validation for local providers
+    if (providerConfig && (providerConfig.provider === "ollama" || providerConfig.provider === "lm-studio")) {
+      if (!finalApiKey) finalApiKey = "dummy_key";
+    }
 
     // Validate inputs
-    if (!apiKey || typeof apiKey !== "string") {
+    if (!finalApiKey || typeof finalApiKey !== "string") {
       return NextResponse.json(
-        { error: "Missing or invalid apiKey" },
+        { error: "Missing or invalid API Key. Please configure it in Settings." },
         { status: 400 }
       );
     }
@@ -44,8 +50,8 @@ export async function POST(request: NextRequest) {
       timestamp: m.timestamp || Date.now(),
     }));
 
-    console.log(`[verdict] Generating verdict for idea: "${ideaText.substring(0, 80)}..."`);
-    const rawVerdict = await generateVerdict(apiKey, ideaText, debateMessages);
+    console.log(`[verdict] Generating verdict for idea via provider "${providerConfig?.provider || "nvidia"}"`);
+    const rawVerdict = await generateVerdict(finalApiKey, ideaText, debateMessages, providerConfig);
 
     // Clean up response: sometimes LLMs return JSON wrapped in markdown codeblocks
     let cleanedVerdict = rawVerdict.trim();
@@ -65,7 +71,7 @@ export async function POST(request: NextRequest) {
     } catch (parseError) {
       console.error("[verdict] Failed to parse verdict JSON:", cleanedVerdict, parseError);
       return NextResponse.json(
-        { error: "NIM returned a non-JSON verdict. Raw response: " + rawVerdict },
+        { error: "Provider returned a non-JSON verdict. Raw response: " + rawVerdict },
         { status: 500 }
       );
     }

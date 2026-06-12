@@ -60,3 +60,11 @@ export interface DebateSession {
   verdict: Verdict | null;
   status: "idle" | "debating" | "cross-reacting" | "generating-verdict" | "complete";
 }
+
+/** Config settings for local/custom LLM providers */
+export interface ProviderConfig {
+  provider: "nvidia" | "ollama" | "lm-studio" | "custom";
+  baseUrl?: string;
+  apiKey?: string;
+  modelName?: string;
+}
