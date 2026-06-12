@@ -25,13 +25,13 @@
 
 We asked MirrorRoom what it thinks of MirrorRoom.
 
-We ran our own project idea through the Silicon Valley room — a VC, a backend engineer, a chronically online skeptic, and a startup-obsessed software engineer. Here's what happened, unedited.
+We ran our own project idea through the Silicon Valley room a VC, a backend engineer, a chronically online skeptic, and a startup-obsessed software engineer. Here's what happened, unedited.
 
 ---
 
 **💼 Jennifer Cho** — *Partner at an early-stage venture capital fund, San Francisco*
 
-> I love the creativity behind MirrorRoom, but my immediate question is, what's the business model here — are you planning to charge users for access to these simulated focus groups, and if so, how do you plan to acquire and retain customers at scale? The open-source aspect is intriguing, but it also raises questions about how you'll monetize the platform and ensure its long-term viability.
+> I love the creativity behind MirrorRoom, but my immediate question is, what's the business model here are you planning to charge users for access to these simulated focus groups, and if so, how do you plan to acquire and retain customers at scale? The open-source aspect is intriguing, but it also raises questions about how you'll monetize the platform and ensure its long-term viability.
 
 **🛠️ Lars** — *Senior backend engineer, 20 years experience, Stockholm*
 
@@ -39,7 +39,7 @@ We ran our own project idea through the Silicon Valley room — a VC, a backend 
 
 **🙄 ratioed_again** — *Extremely online*
 
-> Because what the world really needed was another "revolutionary" market research tool that's just a rehashed version of existing focus group software with a fancy AI coat of paint. I'm with Lars on the concern about biased AI agent personas — we all know how well AI models do with nuance and subtlety (spoiler: they don't).
+> Because what the world really needed was another "revolutionary" market research tool that's just a rehashed version of existing focus group software with a fancy AI coat of paint. I'm with Lars on the concern about biased AI agent personas we all know how well AI models do with nuance and subtlety (spoiler: they don't).
 
 **🧑🏽💻 Danial** — *Software engineer at a tech company, Cyberjaya*
 
@@ -59,7 +59,7 @@ We ran our own project idea through the Silicon Valley room — a VC, a backend 
 - Difficulty ensuring natural behavior from AI agents
 - Challenges in monetizing an open-source platform
 
-**Most polarizing pair:** ratioed_again vs Danial — disagreed on whether MirrorRoom could meaningfully disrupt market research, or is just another AI-coated rehash.
+**Most polarizing pair:** ratioed_again vs Danial disagreed on whether MirrorRoom could meaningfully disrupt market research, or is just another AI-coated rehash.
 
 ---
 
