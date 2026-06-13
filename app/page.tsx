@@ -72,6 +72,7 @@ export default function Dashboard() {
   const [displayedMessages, setDisplayedMessages] = useState<DebateMessage[]>([]);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [isGeneratingVerdict, setIsGeneratingVerdict] = useState(false);
+  const [verdictError, setVerdictError] = useState<string | null>(null);
 
   // Streaming loop step tracking
   const [debateStep, setDebateStep] = useState(0);
@@ -103,6 +104,7 @@ export default function Dashboard() {
   const [tempBaseUrl, setTempBaseUrl] = useState("");
   const [tempApiKey, setTempApiKey] = useState("");
   const [tempModelName, setTempModelName] = useState("");
+  const [tempMaxTokens, setTempMaxTokens] = useState<number | "">("");
 
   // Toast notifications state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -251,7 +253,8 @@ export default function Dashboard() {
       provider: tempProvider,
       baseUrl: finalBaseUrl,
       apiKey: tempApiKey,
-      modelName: finalModelName
+      modelName: finalModelName,
+      maxTokens: tempMaxTokens !== "" ? Number(tempMaxTokens) : undefined
     });
   };
 
@@ -261,6 +264,7 @@ export default function Dashboard() {
     setTempBaseUrl(providerConfig.baseUrl || "");
     setTempApiKey(providerConfig.apiKey || "");
     setTempModelName(providerConfig.modelName || "");
+    setTempMaxTokens(providerConfig.maxTokens !== undefined ? providerConfig.maxTokens : "");
     setShowSettingsModal(true);
   };
 
@@ -291,6 +295,7 @@ export default function Dashboard() {
     setIdeaText("");
     setDisplayedMessages([]);
     setVerdict(null);
+    setVerdictError(null);
     setDebateStep(0);
     setTotalSteps(0);
     if (rooms && rooms.length > 0) {
@@ -405,6 +410,7 @@ export default function Dashboard() {
 
     setError(null);
     setVerdict(null);
+    setVerdictError(null);
     setDisplayedMessages([]);
     setIsDebating(true);
     setStatusText("Convening focus group panel...");
@@ -476,6 +482,77 @@ export default function Dashboard() {
       setIsGeneratingVerdict(true);
       setStatusText("Focus group complete. Synthesizing final verdict...");
       
+      try {
+        const verdictRes = await fetch("/api/verdict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey,
+            providerConfig,
+            ideaText,
+            transcript: accumulatedTranscript.map(m => ({
+              agentId: m.agentId,
+              name: m.agentName,
+              avatarEmoji: m.avatarEmoji,
+              response: m.content
+            }))
+          })
+        });
+        
+        const verdictData = await verdictRes.json();
+        if (!verdictRes.ok) {
+          throw new Error(verdictData.error || "Failed to generate summary verdict.");
+        }
+        
+        setVerdict(verdictData.verdict);
+        setStatusText("Simulation complete! Verdict rendered below.");
+
+        // Auto-save to local SQLite history database
+        try {
+          const saveRes = await fetch("/api/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ideaText,
+              roomId: selectedRoomId,
+              roomName: currentRoom?.name || selectedRoomId,
+              transcript: accumulatedTranscript,
+              verdict: verdictData.verdict
+            })
+          });
+          if (saveRes.ok) {
+            showToast("Saved to history");
+          } else {
+            console.error("Failed to auto-save debate to history database");
+          }
+        } catch (saveErr) {
+          console.error("Error auto-saving debate history:", saveErr);
+        }
+      } catch (verdictErr) {
+        console.error("Verdict synthesis failed:", verdictErr);
+        setVerdictError("This model's response couldn't be processed into a verdict. The debate transcript above is still valid — try regenerating the verdict, or switch to a different model in settings.");
+        setStatusText("Verdict synthesis failed.");
+      }
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred during the simulation");
+      setActiveAgentId(null);
+    } finally {
+      setIsDebating(false);
+      setIsGeneratingVerdict(false);
+    }
+  };
+
+  // Retry the verdict synthesis call without regenerating the transcript
+  const handleRetryVerdict = async () => {
+    if (displayedMessages.length === 0) return;
+
+    setError(null);
+    setVerdictError(null);
+    setIsGeneratingVerdict(true);
+    setStatusText("Retrying focus group verdict synthesis...");
+
+    try {
       const verdictRes = await fetch("/api/verdict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -483,7 +560,7 @@ export default function Dashboard() {
           apiKey,
           providerConfig,
           ideaText,
-          transcript: accumulatedTranscript.map(m => ({
+          transcript: displayedMessages.map(m => ({
             agentId: m.agentId,
             name: m.agentName,
             avatarEmoji: m.avatarEmoji,
@@ -491,12 +568,12 @@ export default function Dashboard() {
           }))
         })
       });
-      
+
       const verdictData = await verdictRes.json();
       if (!verdictRes.ok) {
         throw new Error(verdictData.error || "Failed to generate summary verdict.");
       }
-      
+
       setVerdict(verdictData.verdict);
       setStatusText("Simulation complete! Verdict rendered below.");
 
@@ -509,7 +586,7 @@ export default function Dashboard() {
             ideaText,
             roomId: selectedRoomId,
             roomName: currentRoom?.name || selectedRoomId,
-            transcript: accumulatedTranscript,
+            transcript: displayedMessages,
             verdict: verdictData.verdict
           })
         });
@@ -521,12 +598,11 @@ export default function Dashboard() {
       } catch (saveErr) {
         console.error("Error auto-saving debate history:", saveErr);
       }
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred during the simulation");
-      setActiveAgentId(null);
+    } catch (verdictErr) {
+      console.error("Verdict synthesis retry failed:", verdictErr);
+      setVerdictError("This model's response couldn't be processed into a verdict. The debate transcript above is still valid — try regenerating the verdict, or switch to a different model in settings.");
+      setStatusText("Verdict synthesis failed.");
     } finally {
-      setIsDebating(false);
       setIsGeneratingVerdict(false);
     }
   };
@@ -912,7 +988,7 @@ export default function Dashboard() {
           )}
 
           {/* Verdict Summary Case File */}
-          {(verdict || isGeneratingVerdict) && (
+          {(verdict || isGeneratingVerdict || verdictError) && (
             <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-6 animate-card-slide">
               <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
                 <h2 className="text-xs font-semibold text-[#9A9A92] font-mono tracking-wider uppercase">
@@ -925,6 +1001,27 @@ export default function Dashboard() {
                   </span>
                 )}
               </div>
+
+              {verdictError && !isGeneratingVerdict && (
+                <div className="flex flex-col gap-4">
+                  <div className="p-5 bg-rose-950/20 border border-rose-900/30 rounded-xl text-rose-400 text-sm font-sans flex flex-col gap-2.5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-rose-500 font-mono flex items-center gap-1.5">
+                      <span>⚠️</span> VERDICT SYNTHESIS FAILED
+                    </span>
+                    <p className="leading-relaxed font-sans">
+                      {verdictError}
+                    </p>
+                  </div>
+                  
+                  <button
+                    onClick={handleRetryVerdict}
+                    disabled={isGeneratingVerdict}
+                    className="w-full bg-[#D4A24E] hover:bg-[#ECE8E1] text-[#16181A] py-2.5 px-4 rounded-lg font-mono font-bold tracking-widest text-xs uppercase transition-colors cursor-pointer flex items-center justify-center gap-2 border border-[#D4A24E]"
+                  >
+                    🔄 RETRY VERDICT
+                  </button>
+                </div>
+              )}
 
               {verdict && (
                 <div className="flex flex-wrap gap-2 border-b border-zinc-800/80 pb-4">
@@ -1559,6 +1656,21 @@ export default function Dashboard() {
                   />
                 </div>
               )}
+
+              {/* Max Tokens configuration */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-mono text-[#9A9A92] uppercase">MAX TOKENS (RESPONSE LIMIT)</label>
+                <input
+                  type="number"
+                  value={tempMaxTokens}
+                  onChange={(e) => setTempMaxTokens(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="Defaults: 400 (agents), 800 (verdict)"
+                  className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2.5 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
+                />
+                <p className="text-[10px] text-[#9A9A92]">
+                  Override the response limit for verbose models. Leave blank for default limits.
+                </p>
+              </div>
 
               {tempProvider === "lm-studio" && (
                 <p className="text-[11px] text-[#9A9A92] leading-relaxed">

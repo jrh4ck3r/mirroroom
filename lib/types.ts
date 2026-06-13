@@ -67,4 +67,5 @@ export interface ProviderConfig {
   baseUrl?: string;
   apiKey?: string;
   modelName?: string;
+  maxTokens?: number;
 }

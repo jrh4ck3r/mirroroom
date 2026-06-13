@@ -3,7 +3,7 @@ import { renderSystemPrompt } from "./agentLoader";
 
 const NIM_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const DEFAULT_MODEL = process.env.NIM_MODEL || "meta/llama-3.3-70b-instruct";
-const MAX_TOKENS = 300;
+const MAX_TOKENS = 400;
 const TEMPERATURE = 0.7;
 const TOP_P = 0.9;
 
@@ -76,10 +76,10 @@ function buildMessages(
         userContent += `\n${msg.avatarEmoji} ${msg.agentName}: "${msg.content}"`;
       }
       userContent +=
-        "\n\nNow give your reaction. You may respond to the idea directly, or react to what another panelist said. Keep it to 2-4 sentences.";
+        "\n\nNow give your reaction. You may respond to the idea directly, or react to what another panelist said. Keep your response concise — 2-4 sentences maximum. Do not exceed this even if you have more to say.";
     } else {
       userContent +=
-        "\n\nYou are the first panelist to react. Give your honest reaction in 2-4 sentences.";
+        "\n\nYou are the first panelist to react. Give your honest reaction. Keep your response concise — 2-4 sentences maximum. Do not exceed this even if you have more to say.";
     }
 
     messages.push({ role: "user", content: userContent });
@@ -100,7 +100,7 @@ function buildMessages(
     }
 
     userContent +=
-      "\n\nNow it's your turn for a cross-reaction. Respond to something another panelist said — agree, push back, or add nuance. Keep it to 1-3 sentences.";
+      "\n\nNow it's your turn for a cross-reaction. Respond to something another panelist said — agree, push back, or add nuance. Keep your response concise — 1-3 sentences maximum. Do not exceed this even if you have more to say.";
 
     messages.push({ role: "user", content: userContent });
   }
@@ -134,7 +134,7 @@ export async function getAgentResponse(
       messages,
       temperature: TEMPERATURE,
       top_p: TOP_P,
-      max_tokens: MAX_TOKENS,
+      max_tokens: providerConfig?.maxTokens || MAX_TOKENS,
       stream: false,
     }),
   });
@@ -183,7 +183,7 @@ export async function streamAgentResponse(
       messages,
       temperature: TEMPERATURE,
       top_p: TOP_P,
-      max_tokens: MAX_TOKENS,
+      max_tokens: providerConfig?.maxTokens || MAX_TOKENS,
       stream: true,
     }),
   });
@@ -244,7 +244,7 @@ Return ONLY the JSON object, no markdown formatting, no explanation.`;
       ],
       temperature: TEMPERATURE,
       top_p: TOP_P,
-      max_tokens: 500,
+      max_tokens: providerConfig?.maxTokens ? Math.max(providerConfig.maxTokens * 2, 800) : 800,
       stream: false,
     }),
   });
