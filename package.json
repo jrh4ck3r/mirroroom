@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@next/swc-win32-x64-msvc": "^16.2.9",
     "better-sqlite3": "^12.10.0",
     "html-to-image": "^1.11.13",
     "next": "16.2.9",
