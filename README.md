@@ -13,6 +13,23 @@
 
 ---
 
+## 🆕 New in v1.1
+
+### 💬 Rebuttal Round: Challenge the Panel
+Once the initial verdict has been rendered, you can challenge the focus group. You can address the panel's concerns, defend your position, or pivot your idea in a rebuttal statement.
+- **Sequential Re-deliberation:** Each panelist reads your rebuttal, their previous response, the full transcript of the original round, and re-evaluates their stance. They can soften, hold firm, or get more specific in their criticism.
+- **Final Verdict Synthesis:** After the rebuttal round, a new "Final Verdict (After Rebuttal)" is automatically synthesized using both rounds of transcript + the rebuttal text to generate a final public appeal scorecard.
+- **SQLite History Persistence:** The rebuttal text, transcripts, and final verdicts are fully saved back to the SQLite local database.
+
+### 🛠️ Custom Agent Builder
+Create your own custom panelist personas locally! Visit `/agents/builder` to construct, test, and export custom AI agents.
+- **Deterministic Color Signatures:** Every agent automatically gets a unique, consistent HSL-tailored accent color generated from their name hash.
+- **Interactive Live Preview:** See exactly how the agent card will render in the debate board as you type.
+- **Inline Test Deliberations:** Test your agent persona instantly in a mini-debate alongside default panelists (`pakcik-roslan` and `indian-teacher-ipoh`) before saving or exporting.
+- **Download/Copy Schema:** Export your persona as a standard JSON configuration file matching the existing repository schema to submit a PR and share it!
+
+---
+
 ## ⚡ Tech Stack & Architecture
 
 - **Framework:** Next.js 14/15 (App Router)

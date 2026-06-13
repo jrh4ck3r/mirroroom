@@ -74,6 +74,15 @@ export default function Dashboard() {
   const [isGeneratingVerdict, setIsGeneratingVerdict] = useState(false);
   const [verdictError, setVerdictError] = useState<string | null>(null);
 
+  // Rebuttal states
+  const [currentDbId, setCurrentDbId] = useState<string | null>(null);
+  const [rebuttalInput, setRebuttalInput] = useState("");
+  const [rebuttalMessages, setRebuttalMessages] = useState<DebateMessage[]>([]);
+  const [finalVerdict, setFinalVerdict] = useState<Verdict | null>(null);
+  const [isDebatingRebuttal, setIsDebatingRebuttal] = useState(false);
+  const [isGeneratingFinalVerdict, setIsGeneratingFinalVerdict] = useState(false);
+  const [rebuttalVerdictError, setRebuttalVerdictError] = useState<string | null>(null);
+
   // Streaming loop step tracking
   const [debateStep, setDebateStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(0);
@@ -199,6 +208,12 @@ export default function Dashboard() {
               setIsHistoryView(true);
               setDebateStep(d.transcript.length);
               setTotalSteps(d.transcript.length);
+              
+              // Load v1.1 rebuttal states
+              setCurrentDbId(d.id);
+              if (d.rebuttalText) setRebuttalInput(d.rebuttalText);
+              if (d.rebuttalTranscript) setRebuttalMessages(d.rebuttalTranscript);
+              if (d.finalVerdict) setFinalVerdict(d.finalVerdict);
             }
           } catch (e) {
             console.error("Failed to load historical record:", e);
@@ -298,6 +313,14 @@ export default function Dashboard() {
     setVerdictError(null);
     setDebateStep(0);
     setTotalSteps(0);
+    
+    // Clear rebuttal states
+    setCurrentDbId(null);
+    setRebuttalInput("");
+    setRebuttalMessages([]);
+    setFinalVerdict(null);
+    setRebuttalVerdictError(null);
+
     if (rooms && rooms.length > 0) {
       setSelectedRoomId(rooms[0].id);
     }
@@ -412,6 +435,14 @@ export default function Dashboard() {
     setVerdict(null);
     setVerdictError(null);
     setDisplayedMessages([]);
+    
+    // Clear rebuttal states
+    setCurrentDbId(null);
+    setRebuttalInput("");
+    setRebuttalMessages([]);
+    setFinalVerdict(null);
+    setRebuttalVerdictError(null);
+
     setIsDebating(true);
     setStatusText("Convening focus group panel...");
     setActiveAgentId(null);
@@ -520,7 +551,9 @@ export default function Dashboard() {
               verdict: verdictData.verdict
             })
           });
-          if (saveRes.ok) {
+          const saveData = await saveRes.json();
+          if (saveRes.ok && saveData.success) {
+            setCurrentDbId(saveData.id);
             showToast("Saved to history");
           } else {
             console.error("Failed to auto-save debate to history database");
@@ -590,7 +623,9 @@ export default function Dashboard() {
             verdict: verdictData.verdict
           })
         });
-        if (saveRes.ok) {
+        const saveData = await saveRes.json();
+        if (saveRes.ok && saveData.success) {
+          setCurrentDbId(saveData.id);
           showToast("Saved to history");
         } else {
           console.error("Failed to auto-save debate to history database");
@@ -604,6 +639,224 @@ export default function Dashboard() {
       setStatusText("Verdict synthesis failed.");
     } finally {
       setIsGeneratingVerdict(false);
+    }
+  };
+
+  // Run the rebuttal round (Round 3)
+  const handleSendRebuttal = async () => {
+    if (!apiKey && (providerConfig.provider === "nvidia" || providerConfig.provider === "custom")) {
+      setError("Please configure your API Key in Settings first.");
+      return;
+    }
+    if (!rebuttalInput.trim()) return;
+
+    setError(null);
+    setRebuttalVerdictError(null);
+    setIsDebatingRebuttal(true);
+    setStatusText("Deliberating on rebuttal...");
+    setActiveAgentId(null);
+
+    // Resolve room agents
+    const currentRoom = rooms.find(r => r.id === selectedRoomId);
+    if (!currentRoom) {
+      setError("Selected room preset not found.");
+      setIsDebatingRebuttal(false);
+      return;
+    }
+
+    const roomAgentIds = currentRoom.agent_ids;
+    setTotalSteps(roomAgentIds.length);
+    setDebateStep(0);
+
+    const accumulatedRebuttalTranscript: DebateMessage[] = [];
+
+    try {
+      // Loop sequentially through each agent in the panel for rebuttal round
+      for (let i = 0; i < roomAgentIds.length; i++) {
+        const agentId = roomAgentIds[i];
+        const agent = agents.find(a => a.id === agentId);
+        const name = agent ? agent.name : "Panelist";
+
+        // Show active agent indicator
+        setActiveAgentId(agentId);
+        setStatusText(`${name} is reading rebuttal...`);
+
+        // Post request for the specific agent step in round 3
+        const res = await fetch("/api/debate/step", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey,
+            providerConfig,
+            ideaText,
+            agentId,
+            priorMessages: [
+              ...displayedMessages.map(m => ({ ...m, round: 1 })),
+              ...accumulatedRebuttalTranscript
+            ],
+            round: 3,
+            rebuttalText: rebuttalInput
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || `Error generating response for ${name} (HTTP ${res.status})`);
+        }
+
+        const msg: DebateMessage = data.message;
+        
+        // Add to rebuttal transcript
+        accumulatedRebuttalTranscript.push(msg);
+
+        // Update UI rebuttal messages and counter
+        setRebuttalMessages(prev => [...prev, msg]);
+        setDebateStep(i + 1);
+      }
+
+      // Complete debate step loop
+      setActiveAgentId(null);
+
+      // Verify if we collected responses
+      if (accumulatedRebuttalTranscript.length === 0) {
+        throw new Error("Rebuttal round completed but no agent responses were received.");
+      }
+
+      // Request Verdict analysis for Rebuttal
+      setIsGeneratingFinalVerdict(true);
+      setStatusText("Synthesizing final verdict (after rebuttal)...");
+      
+      try {
+        const verdictRes = await fetch("/api/verdict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey,
+            providerConfig,
+            ideaText,
+            transcript: [
+              ...displayedMessages,
+              ...accumulatedRebuttalTranscript
+            ].map(m => ({
+              agentId: m.agentId,
+              name: m.agentName,
+              avatarEmoji: m.avatarEmoji,
+              response: m.content,
+              round: m.round
+            })),
+            rebuttalText: rebuttalInput
+          })
+        });
+        
+        const verdictData = await verdictRes.json();
+        if (!verdictRes.ok) {
+          throw new Error(verdictData.error || "Failed to generate final verdict.");
+        }
+        
+        setFinalVerdict(verdictData.verdict);
+        setStatusText("Rebuttal round complete! Final verdict rendered.");
+
+        // Update history entry with PUT
+        if (currentDbId) {
+          try {
+            const updateRes = await fetch("/api/history", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: currentDbId,
+                rebuttalText: rebuttalInput,
+                rebuttalTranscript: accumulatedRebuttalTranscript,
+                finalVerdict: verdictData.verdict
+              })
+            });
+            if (updateRes.ok) {
+              showToast("Final verdict saved to history");
+            } else {
+              console.error("Failed to update database with rebuttal round details");
+            }
+          } catch (dbErr) {
+            console.error("Database update error:", dbErr);
+          }
+        }
+      } catch (verdictErr) {
+        console.error("Final verdict synthesis failed:", verdictErr);
+        setRebuttalVerdictError("This model's final response couldn't be processed into a final verdict. The rebuttal transcript above is still valid — try retrying.");
+        setStatusText("Final verdict synthesis failed.");
+      }
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred during the rebuttal round");
+      setActiveAgentId(null);
+    } finally {
+      setIsDebatingRebuttal(false);
+      setIsGeneratingFinalVerdict(false);
+    }
+  };
+
+  const handleRetryRebuttalVerdict = async () => {
+    if (rebuttalMessages.length === 0) return;
+
+    setError(null);
+    setRebuttalVerdictError(null);
+    setIsGeneratingFinalVerdict(true);
+    setStatusText("Retrying final verdict synthesis...");
+
+    try {
+      const verdictRes = await fetch("/api/verdict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey,
+          providerConfig,
+          ideaText,
+          transcript: [
+            ...displayedMessages,
+            ...rebuttalMessages
+          ].map(m => ({
+            agentId: m.agentId,
+            name: m.agentName,
+            avatarEmoji: m.avatarEmoji,
+            response: m.content,
+            round: m.round
+          })),
+          rebuttalText: rebuttalInput
+        })
+      });
+
+      const verdictData = await verdictRes.json();
+      if (!verdictRes.ok) {
+        throw new Error(verdictData.error || "Failed to generate final verdict.");
+      }
+
+      setFinalVerdict(verdictData.verdict);
+      setStatusText("Rebuttal round complete! Final verdict rendered.");
+
+      // Update history entry with PUT
+      if (currentDbId) {
+        try {
+          const updateRes = await fetch("/api/history", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: currentDbId,
+              rebuttalText: rebuttalInput,
+              rebuttalTranscript: rebuttalMessages,
+              finalVerdict: verdictData.verdict
+            })
+          });
+          if (updateRes.ok) {
+            showToast("Final verdict saved to history");
+          }
+        } catch (dbErr) {
+          console.error("Database update error:", dbErr);
+        }
+      }
+    } catch (verdictErr) {
+      console.error("Final verdict synthesis retry failed:", verdictErr);
+      setRebuttalVerdictError("This model's final response couldn't be processed into a final verdict. The rebuttal transcript above is still valid — try retrying.");
+      setStatusText("Final verdict synthesis failed.");
+    } finally {
+      setIsGeneratingFinalVerdict(false);
     }
   };
 
@@ -624,6 +877,10 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-6 font-mono text-xs text-[#9A9A92]">
+            <a href="/agents/builder" className="hover:text-white transition-colors flex items-center gap-1.5">
+              🛠️ AGENT BUILDER
+            </a>
+            <span className="text-[#D4A24E]">•</span>
             <a href="/history" className="hover:text-white transition-colors flex items-center gap-1.5">
               📂 DOCKET ARCHIVE
             </a>
@@ -922,35 +1179,52 @@ export default function Dashboard() {
 
               {/* Message scroll container */}
               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 select-text">
-                {displayedMessages.map((msg, index) => {
-                  const agent = agents.find(a => a.id === msg.agentId);
-                  const accentColor = getAgentColor(msg.agentId);
-                  return (
-                    <div
-                      key={index}
-                      className="animate-card-slide flex items-start gap-4 bg-[#16181A]/40 border border-zinc-850 p-4 rounded-r-xl transition-all duration-300"
-                      style={{ borderLeft: `3px solid ${accentColor}` }}
-                    >
-                      {/* Avatar Circle with tinted background */}
-                      <div 
-                        className="h-10 w-10 rounded-full flex items-center justify-center text-xl shrink-0 border border-zinc-800/30"
-                        style={{ backgroundColor: `${accentColor}18` }}
-                      >
-                        {msg.avatarEmoji}
-                      </div>
-                      
-                      <div className="flex-1 space-y-1">
-                        <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                          <h3 className="text-sm font-semibold text-white font-sans">{msg.agentName}</h3>
-                          <span className="text-[9px] text-[#9A9A92] font-mono uppercase tracking-wider font-semibold">
-                            {agent?.occupation || "Panelist"} • {agent?.location.split(",")[0] || ""}
-                          </span>
+                {(() => {
+                  const allMsgs = [
+                    ...displayedMessages.map(m => ({ ...m, round: m.round || 1 })),
+                    ...rebuttalMessages.map(m => ({ ...m, round: 3 }))
+                  ];
+                  return allMsgs.map((msg, index) => {
+                    const agent = agents.find(a => a.id === msg.agentId);
+                    const accentColor = getAgentColor(msg.agentId);
+                    const isFirstRound3 = msg.round === 3 && (index === 0 || allMsgs[index - 1].round !== 3);
+                    return (
+                      <div key={index} className="space-y-4">
+                        {isFirstRound3 && (
+                          <div className="flex items-center gap-4 py-2">
+                            <div className="h-[1px] flex-1 bg-zinc-850" />
+                            <span className="text-[9px] text-[#D4A24E] font-mono tracking-widest uppercase bg-[#1F2226] px-3 py-1 border border-[#D4A24E]/30 rounded-sm">
+                              💬 PANEL REBUTTAL ROUND
+                            </span>
+                            <div className="h-[1px] flex-1 bg-zinc-850" />
+                          </div>
+                        )}
+                        <div
+                          className="animate-card-slide flex items-start gap-4 bg-[#16181A]/40 border border-zinc-850 p-4 rounded-r-xl transition-all duration-300"
+                          style={{ borderLeft: `3px solid ${accentColor}` }}
+                        >
+                          {/* Avatar Circle with tinted background */}
+                          <div 
+                            className="h-10 w-10 rounded-full flex items-center justify-center text-xl shrink-0 border border-zinc-800/30"
+                            style={{ backgroundColor: `${accentColor}18` }}
+                          >
+                            {msg.avatarEmoji}
+                          </div>
+                          
+                          <div className="flex-1 space-y-1">
+                            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+                              <h3 className="text-sm font-semibold text-white font-sans">{msg.agentName}</h3>
+                              <span className="text-[9px] text-[#9A9A92] font-mono uppercase tracking-wider font-semibold">
+                                {agent?.occupation || "Panelist"} • {agent?.location.split(",")[0] || ""}
+                              </span>
+                            </div>
+                            <p className="text-sm text-[#ECE8E1]/90 leading-relaxed font-sans font-light">{msg.content}</p>
+                          </div>
                         </div>
-                        <p className="text-sm text-[#ECE8E1]/90 leading-relaxed font-sans font-light">{msg.content}</p>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
 
                 {/* Live Typing Simulator */}
                 {activeAgentId && (
@@ -1197,6 +1471,198 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* Rebuttal Round Section */}
+          {verdict && !verdictError && !isGeneratingVerdict && (
+            <div className="flex flex-col gap-6">
+              
+              {/* Challenge the Panel Input Panel */}
+              {(!finalVerdict && !isGeneratingFinalVerdict && !isDebatingRebuttal) ? (
+                <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-4 animate-card-slide">
+                  <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider flex items-center gap-2">
+                    💬 Challenge the Panel
+                  </h2>
+                  <p className="text-xs text-[#9A9A92] leading-relaxed">
+                    If you disagree with the verdict or concerns raised by the panel, you can submit a rebuttal. They will re-deliberate and react to your points, leading to a final verdict.
+                  </p>
+                  <textarea
+                    value={rebuttalInput}
+                    onChange={(e) => setRebuttalInput(e.target.value)}
+                    disabled={isDebatingRebuttal || isSharedMode}
+                    placeholder="Address the panel's concerns, defend your position, or pivot your idea..."
+                    rows={4}
+                    className="w-full bg-[#16181A] border border-zinc-800/80 focus:border-[#D4A24E] focus:outline-hidden text-[#ECE8E1] rounded-lg p-3.5 text-sm leading-relaxed font-sans transition-colors resize-none disabled:opacity-50"
+                  />
+                  <button
+                    onClick={handleSendRebuttal}
+                    disabled={isDebatingRebuttal || !rebuttalInput.trim() || isSharedMode}
+                    className={`w-full py-3 px-4 rounded-lg font-semibold text-sm transition-all text-center flex items-center justify-center gap-2 border font-mono tracking-widest ${
+                      isDebatingRebuttal || !rebuttalInput.trim() || isSharedMode
+                        ? "bg-zinc-900 border-zinc-800 text-zinc-500 cursor-not-allowed"
+                        : "bg-[#D4A24E] text-[#16181A] border-[#D4A24E] font-bold hover:bg-[#ECE8E1] hover:border-[#ECE8E1] cursor-pointer transition-colors shadow-md"
+                    }`}
+                  >
+                    💬 SEND REBUTTAL
+                  </button>
+                  {isSharedMode && (
+                    <p className="text-[10px] text-[#D4A24E] text-center font-mono uppercase">
+                      Rebuttals disabled in shared record view.
+                    </p>
+                  )}
+                </div>
+              ) : isDebatingRebuttal || isGeneratingFinalVerdict ? (
+                <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-4 items-center justify-center py-10 text-center animate-card-slide">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D4A24E] mb-2" />
+                  <span className="text-xs font-mono text-[#D4A24E] uppercase tracking-widest">
+                    {isGeneratingFinalVerdict ? "FINALIZING CASE JUDGMENT..." : "PANEL IS RE-EVALUATING CONCEPTS..."}
+                  </span>
+                  <p className="text-xs text-[#9A9A92] max-w-sm mt-1">
+                    {isGeneratingFinalVerdict 
+                      ? "Synthesizing round 1, rebuttal testimonies, and drafting the final verdict scorecard."
+                      : "Please wait while the panelists review your challenge and provide secondary statements."}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-3 text-center animate-card-slide">
+                  <span className="text-[10px] text-[#9A9A92] font-mono uppercase tracking-widest">
+                    🔒 REBUTTAL ROUND CONCLUDED
+                  </span>
+                  <p className="text-xs text-[#9A9A92]">
+                    Advanced multi-round debates coming in v2.
+                  </p>
+                </div>
+              )}
+
+              {/* Rebuttal Verdict Error Log */}
+              {rebuttalVerdictError && (
+                <div className="bg-[#1F2226] p-5 border border-rose-900/30 text-rose-400 rounded-xl flex flex-col gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-rose-500 font-mono">⚠️ VERDICT SYNTHESIS ERROR</span>
+                  <p className="text-xs leading-relaxed font-mono whitespace-pre-wrap">{rebuttalVerdictError}</p>
+                  <button
+                    onClick={handleRetryRebuttalVerdict}
+                    className="w-full bg-[#D4A24E] text-[#16181A] py-2 px-3 rounded text-[11px] font-mono font-bold uppercase tracking-wider hover:bg-[#ECE8E1] transition-all cursor-pointer mt-2"
+                  >
+                    🔄 RETRY FINAL VERDICT SYNTHESIS
+                  </button>
+                </div>
+              )}
+
+              {/* Final Verdict Card */}
+              {finalVerdict && (
+                <div className="bg-[#1F2226] border border-zinc-800/60 p-6 rounded-xl flex flex-col gap-6 animate-card-slide">
+                  <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                    <h2 className="text-xs font-semibold text-[#D4A24E] font-mono tracking-wider uppercase">
+                      📜 FINAL VERDICT (AFTER REBUTTAL)
+                    </h2>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                      
+                      {/* Double ring circular stamp */}
+                      <div className="md:col-span-5 flex flex-col items-center justify-center text-center py-4">
+                        <span className="font-serif text-sm font-medium text-[#D4A24E] tracking-wide mb-2">
+                          Final Appeal Score
+                        </span>
+                        
+                        <div className="verdict-seal-stamp h-[140px] w-[140px] rounded-full border-4 border-double border-[#D4A24E] flex flex-col items-center justify-center select-none shadow-[inset_0_0_12px_rgba(212,162,78,0.1)] relative">
+                          <div className="absolute inset-1 rounded-full border border-dashed border-[#D4A24E]/20" />
+                          <span className="text-4xl font-bold font-mono text-[#D4A24E] leading-none tracking-tight">
+                            {finalVerdict.overallScore}
+                          </span>
+                          <span className="text-[10px] font-mono text-[#D4A24E]/80 tracking-widest mt-1">
+                            / 100
+                          </span>
+                        </div>
+                        
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-[#D4A24E] mt-3 font-bold">
+                          {finalVerdict.overallScore >= 70 ? "HIGH SUPPORT" : finalVerdict.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
+                        </span>
+                      </div>
+
+                      {/* Summary Paragraph */}
+                      <div className="md:col-span-7 bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-2 shadow-xs">
+                        <span className="text-[10px] text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
+                          FINAL JUDGMENT SUMMARY
+                        </span>
+                        <p className="text-sm text-[#ECE8E1]/90 leading-relaxed font-sans italic">
+                          "{finalVerdict.summary}"
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Support & Concerns */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-3">
+                        <h3 className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                          <span>✓</span> FINAL FINDINGS OF SUPPORT
+                        </h3>
+                        <ul className="space-y-2.5 text-xs text-[#ECE8E1]/80">
+                          {finalVerdict.topSupport.map((item, idx) => (
+                            <li key={idx} className="flex gap-2 leading-relaxed">
+                              <span className="text-emerald-500 select-none">•</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-3">
+                        <h3 className="text-[10px] font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                          <span>⚠️</span> FINAL SYSTEMIC CONCERNS
+                        </h3>
+                        <ul className="space-y-2.5 text-xs text-[#ECE8E1]/80">
+                          {finalVerdict.topConcerns.map((item, idx) => (
+                            <li key={idx} className="flex gap-2 leading-relaxed">
+                              <span className="text-rose-500 select-none">•</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Dissension Dissuasion */}
+                    {finalVerdict.mostPolarizingPair && (
+                      <div className="bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-5 flex flex-col gap-3">
+                        <span className="text-[10px] text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
+                          PRIMARY COUNCIL DISSENSION
+                        </span>
+                        
+                        <div className="flex flex-col sm:flex-row items-center gap-4 py-2">
+                          <div className="flex items-center gap-2 bg-[#1F2226] px-3 py-2 rounded-lg border border-zinc-800/80 w-full sm:w-auto">
+                            <span className="text-xl">
+                              {agents.find(a => a.name === finalVerdict.mostPolarizingPair.agent1)?.avatar_emoji || "👤"}
+                            </span>
+                            <span className="text-xs font-bold text-white whitespace-nowrap">
+                              {finalVerdict.mostPolarizingPair.agent1}
+                            </span>
+                          </div>
+
+                          <span className="text-[9px] bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-2 py-0.5 rounded-full font-mono font-bold">
+                            VS
+                          </span>
+
+                          <div className="flex items-center gap-2 bg-[#1F2226] px-3 py-2 rounded-lg border border-zinc-800/80 w-full sm:w-auto">
+                            <span className="text-xl">
+                              {agents.find(a => a.name === finalVerdict.mostPolarizingPair.agent2)?.avatar_emoji || "👤"}
+                            </span>
+                            <span className="text-xs font-bold text-white whitespace-nowrap">
+                              {finalVerdict.mostPolarizingPair.agent2}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-[#ECE8E1]/80 leading-relaxed font-sans">
+                          <strong className="text-white">Diverging Positions:</strong> {finalVerdict.mostPolarizingPair.reason}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* General Error Log */}
           {error && (
             <div className="bg-[#1F2226] p-5 border border-rose-900/30 text-rose-400 rounded-xl flex flex-col gap-2">
@@ -1218,351 +1684,372 @@ export default function Dashboard() {
       </footer>
 
       {/* Hidden Export Templates for html-to-image */}
-      {verdict && (
-        <div className="absolute -left-[9999px] -top-[9999px] w-[1200px]" style={{ zIndex: -1 }}>
-          
-          {/* 1. Verdict Only Template */}
-          <div 
-            id="export-verdict-only" 
-            className="bg-[#16181A] text-[#ECE8E1] p-16 flex flex-col gap-8 font-sans border-4 border-[#D4A24E]/20"
-          >
-            {/* Logo and Wordmark Header */}
-            <div className="flex items-center justify-between border-b border-[#D4A24E]/30 pb-6">
-              <div className="flex items-center gap-4">
-                <span className="text-4xl">🪞</span>
-                <div>
-                  <h1 className="text-3xl font-extrabold tracking-tight font-serif text-white flex items-center gap-3">
-                    MIRRORROOM <span className="text-xs bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/30 px-2.5 py-1 rounded-sm font-mono tracking-widest uppercase">TRIBUNAL RECORD</span>
-                  </h1>
-                  <p className="text-xs text-[#9A9A92] font-mono tracking-wider uppercase mt-1">Official Focus Group Deliberation Index</p>
+      {verdict && (() => {
+        const v = finalVerdict || verdict;
+        const isFinal = !!finalVerdict;
+        return (
+          <div className="absolute -left-[9999px] -top-[9999px] w-[1200px]" style={{ zIndex: -1 }}>
+            
+            {/* 1. Verdict Only Template */}
+            <div 
+              id="export-verdict-only" 
+              className="bg-[#16181A] text-[#ECE8E1] p-16 flex flex-col gap-8 font-sans border-4 border-[#D4A24E]/20"
+            >
+              {/* Logo and Wordmark Header */}
+              <div className="flex items-center justify-between border-b border-[#D4A24E]/30 pb-6">
+                <div className="flex items-center gap-4">
+                  <span className="text-4xl">🪞</span>
+                  <div>
+                    <h1 className="text-3xl font-extrabold tracking-tight font-serif text-white flex items-center gap-3">
+                      MIRRORROOM <span className="text-xs bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/30 px-2.5 py-1 rounded-sm font-mono tracking-widest uppercase">{isFinal ? "FINAL TRIBUNAL RECORD" : "TRIBUNAL RECORD"}</span>
+                    </h1>
+                    <p className="text-xs text-[#9A9A92] font-mono tracking-wider uppercase mt-1">Official Focus Group Deliberation Index</p>
+                  </div>
+                </div>
+                <div className="text-right font-mono text-xs text-[#9A9A92] space-y-1">
+                  <div>ROOM / PANEL: <span className="text-white font-semibold">{currentRoom?.name.toUpperCase()}</span></div>
+                  <div>PANELISTS: <span className="text-white font-semibold">{currentRoomAgents.length} SEATS</span></div>
+                  <div>DATE: <span className="text-[#D4A24E] font-semibold">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}</span></div>
                 </div>
               </div>
-              <div className="text-right font-mono text-xs text-[#9A9A92] space-y-1">
-                <div>ROOM / PANEL: <span className="text-white font-semibold">{currentRoom?.name.toUpperCase()}</span></div>
-                <div>PANELISTS: <span className="text-white font-semibold">{currentRoomAgents.length} SEATS</span></div>
-                <div>DATE: <span className="text-[#D4A24E] font-semibold">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}</span></div>
-              </div>
-            </div>
 
-            {/* Concept Under Review */}
-            <div className="bg-[#1F2226] border border-zinc-800 p-6 rounded-xl flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider border-b border-zinc-800 pb-2">
-                📝 CONCEPT UNDER REVIEW
-              </h2>
-              <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic font-light">
-                "{ideaText}"
-              </p>
-            </div>
-
-            {/* Verdict Seal & Summary */}
-            <div className="grid grid-cols-12 gap-8 items-center bg-[#1F2226] border border-zinc-800 p-8 rounded-xl">
-              
-              {/* Verdict Seal Stamp */}
-              <div className="col-span-4 flex flex-col items-center justify-center text-center">
-                <span className="font-serif text-sm font-medium text-[#D4A24E] tracking-wide mb-3">
-                  Public Appeal
-                </span>
-                
-                <div className="h-[150px]. w-[150px] rounded-full border-4 border-double border-[#D4A24E] flex flex-col items-center justify-center select-none shadow-[inset_0_0_15px_rgba(212,162,78,0.1)] relative" style={{ transform: "rotate(-6deg)" }}>
-                  <div className="absolute inset-1 rounded-full border border-dashed border-[#D4A24E]/20" />
-                  <span className="text-5xl font-bold font-mono text-[#D4A24E] leading-none tracking-tight">
-                    {verdict.overallScore}
-                  </span>
-                  <span className="text-xs font-mono text-[#D4A24E]/80 tracking-widest mt-1">
-                    / 100
-                  </span>
-                </div>
-                
-                <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold">
-                  {verdict.overallScore >= 70 ? "HIGH SUPPORT" : verdict.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
-                </span>
-              </div>
-
-              {/* Judgment Summary */}
-              <div className="col-span-8 bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-3 h-full justify-center">
-                <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
-                  JUDGMENT SUMMARY
-                </span>
-                <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic">
-                  "{verdict.summary}"
+              {/* Concept Under Review */}
+              <div className="bg-[#1F2226] border border-zinc-800 p-6 rounded-xl flex flex-col gap-3">
+                <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider border-b border-zinc-800 pb-2">
+                  📝 CONCEPT UNDER REVIEW
+                </h2>
+                <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic font-light">
+                  "{ideaText}"
                 </p>
               </div>
 
-            </div>
-
-            {/* Findings Columns */}
-            <div className="grid grid-cols-2 gap-8">
-              
-              {/* Support */}
-              <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
-                <h3 className="text-xs font-bold text-emerald-500 uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
-                  <span>✓</span> DETAILED FINDINGS OF SUPPORT
-                </h3>
-                <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
-                  {verdict.topSupport.map((item, idx) => (
-                    <li key={idx} className="flex gap-2.5 leading-relaxed">
-                      <span className="text-emerald-500 select-none">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Concerns */}
-              <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
-                <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
-                  <span>⚠️</span> FORESEEN SYSTEMIC CONCERNS
-                </h3>
-                <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
-                  {verdict.topConcerns.map((item, idx) => (
-                    <li key={idx} className="flex gap-2.5 leading-relaxed">
-                      <span className="text-rose-500 select-none">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-            </div>
-
-            {/* Polarizing Contentions */}
-            {verdict.mostPolarizingPair && (
-              <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
-                <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold border-b border-zinc-800 pb-2">
-                  PRIMARY COUNCIL DISSENSION
-                </span>
+              {/* Verdict Seal & Summary */}
+              <div className="grid grid-cols-12 gap-8 items-center bg-[#1F2226] border border-zinc-800 p-8 rounded-xl">
                 
-                <div className="flex items-center gap-6 py-1">
-                  {/* Agent 1 */}
-                  <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
-                    <span className="text-2xl">
-                      {agents.find(a => a.name === verdict.mostPolarizingPair.agent1)?.avatar_emoji || "👤"}
-                    </span>
-                    <span className="text-sm font-bold text-white whitespace-nowrap">
-                      {verdict.mostPolarizingPair.agent1}
-                    </span>
-                  </div>
-
-                  <span className="text-[10px] bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-3 py-1 rounded-full font-mono font-bold">
-                    VS
+                {/* Verdict Seal Stamp */}
+                <div className="col-span-4 flex flex-col items-center justify-center text-center">
+                  <span className="font-serif text-sm font-medium text-[#D4A24E] tracking-wide mb-3">
+                    {isFinal ? "Final Appeal (After Rebuttal)" : "Public Appeal"}
                   </span>
-
-                  {/* Agent 2 */}
-                  <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
-                    <span className="text-2xl">
-                      {agents.find(a => a.name === verdict.mostPolarizingPair.agent2)?.avatar_emoji || "👤"}
+                  
+                  <div className="h-[150px] w-[150px] rounded-full border-4 border-double border-[#D4A24E] flex flex-col items-center justify-center select-none shadow-[inset_0_0_15px_rgba(212,162,78,0.1)] relative" style={{ transform: "rotate(-6deg)" }}>
+                    <div className="absolute inset-1 rounded-full border border-dashed border-[#D4A24E]/20" />
+                    <span className="text-5xl font-bold font-mono text-[#D4A24E] leading-none tracking-tight">
+                      {v.overallScore}
                     </span>
-                    <span className="text-sm font-bold text-white whitespace-nowrap">
-                      {verdict.mostPolarizingPair.agent2}
+                    <span className="text-xs font-mono text-[#D4A24E]/80 tracking-widest mt-1">
+                      / 100
                     </span>
                   </div>
+                  
+                  <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold">
+                    {v.overallScore >= 70 ? "HIGH SUPPORT" : v.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
+                  </span>
                 </div>
 
-                <p className="text-sm text-[#ECE8E1]/80 leading-relaxed font-sans">
-                  <strong className="text-white">Diverging Positions:</strong> {verdict.mostPolarizingPair.reason}
-                </p>
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="border-t border-zinc-800 pt-6 mt-4 flex justify-between items-center text-xs text-[#9A9A92] font-mono">
-              <p>Generated with MirrorRoom (open source) — github.com/jrh4ck3r/mirroroom</p>
-              <p>POWERED BY NVIDIA NIM DIRECT CONNECTIONS</p>
-            </div>
-
-          </div>
-
-          {/* 2. Full Transcript Template */}
-          <div 
-            id="export-full-transcript" 
-            className="bg-[#16181A] text-[#ECE8E1] p-16 flex flex-col gap-8 font-sans border-4 border-[#D4A24E]/20"
-          >
-            {/* Logo and Wordmark Header */}
-            <div className="flex items-center justify-between border-b border-[#D4A24E]/30 pb-6">
-              <div className="flex items-center gap-4">
-                <span className="text-4xl">🪞</span>
-                <div>
-                  <h1 className="text-3xl font-extrabold tracking-tight font-serif text-white flex items-center gap-3">
-                    MIRRORROOM <span className="text-xs bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/30 px-2.5 py-1 rounded-sm font-mono tracking-widest uppercase">TRIBUNAL RECORD</span>
-                  </h1>
-                  <p className="text-xs text-[#9A9A92] font-mono tracking-wider uppercase mt-1">Complete Focus Group Debates & Final Scorecard</p>
+                {/* Judgment Summary */}
+                <div className="col-span-8 bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-3 h-full justify-center">
+                  <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
+                    {isFinal ? "FINAL JUDGMENT SUMMARY" : "JUDGMENT SUMMARY"}
+                  </span>
+                  <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic">
+                    "{v.summary}"
+                  </p>
                 </div>
-              </div>
-              <div className="text-right font-mono text-xs text-[#9A9A92] space-y-1">
-                <div>ROOM / PANEL: <span className="text-white font-semibold">{currentRoom?.name.toUpperCase()}</span></div>
-                <div>PANELISTS: <span className="text-white font-semibold">{currentRoomAgents.length} SEATS</span></div>
-                <div>DATE: <span className="text-[#D4A24E] font-semibold">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}</span></div>
-              </div>
-            </div>
 
-            {/* Concept Under Review */}
-            <div className="bg-[#1F2226] border border-zinc-800 p-6 rounded-xl flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider border-b border-zinc-800 pb-2">
-                📝 CONCEPT UNDER REVIEW
-              </h2>
-              <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic font-light">
-                "{ideaText}"
-              </p>
-            </div>
+              </div>
 
-            {/* Panelists testimonies */}
-            <div className="flex flex-col gap-4">
-              <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider border-b border-zinc-800 pb-2">
-                📜 RECORDED TESTIMONIES OF PANELISTS
-              </h2>
-              
-              <div className="space-y-4">
-                {displayedMessages.map((msg, index) => {
-                  const agent = agents.find(a => a.id === msg.agentId);
-                  const accentColor = getAgentColor(msg.agentId);
-                  return (
-                    <div
-                      key={index}
-                      className="flex items-start gap-5 bg-[#1F2226] border border-zinc-800 p-5 rounded-r-xl"
-                      style={{ borderLeft: `4px solid ${accentColor}` }}
-                    >
-                      <div 
-                        className="h-12 w-12 rounded-full flex items-center justify-center text-2xl shrink-0 border border-zinc-800/30"
-                        style={{ backgroundColor: `${accentColor}18` }}
-                      >
-                        {msg.avatarEmoji}
-                      </div>
-                      
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-baseline justify-between">
-                          <h3 className="text-base font-semibold text-white font-sans">{msg.agentName}</h3>
-                          <span className="text-[10px] text-[#9A9A92] font-mono uppercase tracking-wider font-semibold">
-                            {agent?.occupation || "Panelist"} • {agent?.location.split(",")[0] || ""}
-                          </span>
-                        </div>
-                        <p className="text-sm text-[#ECE8E1]/90 leading-relaxed font-sans font-light">{msg.content}</p>
-                      </div>
+              {/* Findings Columns */}
+              <div className="grid grid-cols-2 gap-8">
+                
+                {/* Support */}
+                <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
+                  <h3 className="text-xs font-bold text-emerald-500 uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
+                    <span>✓</span> DETAILED FINDINGS OF SUPPORT
+                  </h3>
+                  <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
+                    {v.topSupport.map((item, idx) => (
+                      <li key={idx} className="flex gap-2.5 leading-relaxed">
+                        <span className="text-emerald-500 select-none">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Concerns */}
+                <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
+                  <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
+                    <span>⚠️</span> FORESEEN SYSTEMIC CONCERNS
+                  </h3>
+                  <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
+                    {v.topConcerns.map((item, idx) => (
+                      <li key={idx} className="flex gap-2.5 leading-relaxed">
+                        <span className="text-rose-500 select-none">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+              </div>
+
+              {/* Polarizing Contentions */}
+              {v.mostPolarizingPair && (
+                <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
+                  <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold border-b border-zinc-800 pb-2">
+                    PRIMARY COUNCIL DISSENSION
+                  </span>
+                  
+                  <div className="flex items-center gap-6 py-1">
+                    {/* Agent 1 */}
+                    <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
+                      <span className="text-2xl">
+                        {agents.find(a => a.name === v.mostPolarizingPair.agent1)?.avatar_emoji || "👤"}
+                      </span>
+                      <span className="text-sm font-bold text-white whitespace-nowrap">
+                        {v.mostPolarizingPair.agent1}
+                      </span>
                     </div>
-                  );
-                })}
+
+                    <span className="text-[10px] bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-3 py-1 rounded-full font-mono font-bold">
+                      VS
+                    </span>
+
+                    {/* Agent 2 */}
+                    <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
+                      <span className="text-2xl">
+                        {agents.find(a => a.name === v.mostPolarizingPair.agent2)?.avatar_emoji || "👤"}
+                      </span>
+                      <span className="text-sm font-bold text-white whitespace-nowrap">
+                        {v.mostPolarizingPair.agent2}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-[#ECE8E1]/80 leading-relaxed font-sans">
+                    <strong className="text-white">Diverging Positions:</strong> {v.mostPolarizingPair.reason}
+                  </p>
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="border-t border-zinc-800 pt-6 mt-4 flex justify-between items-center text-xs text-[#9A9A92] font-mono">
+                <p>Generated with MirrorRoom (open source) — github.com/jrh4ck3r/mirroroom</p>
+                <p>POWERED BY NVIDIA NIM DIRECT CONNECTIONS</p>
               </div>
+
             </div>
 
-            {/* Verdict Seal & Summary */}
-            <div className="grid grid-cols-12 gap-8 items-center bg-[#1F2226] border border-zinc-800 p-8 rounded-xl mt-4">
-              
-              {/* Verdict Seal Stamp */}
-              <div className="col-span-4 flex flex-col items-center justify-center text-center">
-                <span className="font-serif text-sm font-medium text-[#D4A24E] tracking-wide mb-3">
-                  Public Appeal
-                </span>
-                
-                <div className="h-[150px] w-[150px] rounded-full border-4 border-double border-[#D4A24E] flex flex-col items-center justify-center select-none shadow-[inset_0_0_15px_rgba(212,162,78,0.1)] relative" style={{ transform: "rotate(-6deg)" }}>
-                  <div className="absolute inset-1 rounded-full border border-dashed border-[#D4A24E]/20" />
-                  <span className="text-5xl font-bold font-mono text-[#D4A24E] leading-none tracking-tight">
-                    {verdict.overallScore}
-                  </span>
-                  <span className="text-xs font-mono text-[#D4A24E]/80 tracking-widest mt-1">
-                    / 100
-                  </span>
+            {/* 2. Full Transcript Template */}
+            <div 
+              id="export-full-transcript" 
+              className="bg-[#16181A] text-[#ECE8E1] p-16 flex flex-col gap-8 font-sans border-4 border-[#D4A24E]/20"
+            >
+              {/* Logo and Wordmark Header */}
+              <div className="flex items-center justify-between border-b border-[#D4A24E]/30 pb-6">
+                <div className="flex items-center gap-4">
+                  <span className="text-4xl">🪞</span>
+                  <div>
+                    <h1 className="text-3xl font-extrabold tracking-tight font-serif text-white flex items-center gap-3">
+                      MIRRORROOM <span className="text-xs bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/30 px-2.5 py-1 rounded-sm font-mono tracking-widest uppercase">{isFinal ? "FINAL TRIBUNAL RECORD" : "TRIBUNAL RECORD"}</span>
+                    </h1>
+                    <p className="text-xs text-[#9A9A92] font-mono tracking-wider uppercase mt-1">Complete Focus Group Debates & Final Scorecard</p>
+                  </div>
                 </div>
-                
-                <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold">
-                  {verdict.overallScore >= 70 ? "HIGH SUPPORT" : verdict.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
-                </span>
+                <div className="text-right font-mono text-xs text-[#9A9A92] space-y-1">
+                  <div>ROOM / PANEL: <span className="text-white font-semibold">{currentRoom?.name.toUpperCase()}</span></div>
+                  <div>PANELISTS: <span className="text-white font-semibold">{currentRoomAgents.length} SEATS</span></div>
+                  <div>DATE: <span className="text-[#D4A24E] font-semibold">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}</span></div>
+                </div>
               </div>
 
-              {/* Judgment Summary */}
-              <div className="col-span-8 bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-3 h-full justify-center">
-                <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
-                  JUDGMENT SUMMARY
-                </span>
-                <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic">
-                  "{verdict.summary}"
+              {/* Concept Under Review */}
+              <div className="bg-[#1F2226] border border-zinc-800 p-6 rounded-xl flex flex-col gap-3">
+                <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider border-b border-zinc-800 pb-2">
+                  📝 CONCEPT UNDER REVIEW
+                </h2>
+                <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic font-light">
+                  "{ideaText}"
                 </p>
               </div>
 
-            </div>
-
-            {/* Findings Columns */}
-            <div className="grid grid-cols-2 gap-8">
-              
-              {/* Support */}
-              <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
-                <h3 className="text-xs font-bold text-[#10B981] uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
-                  <span>✓</span> DETAILED FINDINGS OF SUPPORT
-                </h3>
-                <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
-                  {verdict.topSupport.map((item, idx) => (
-                    <li key={idx} className="flex gap-2.5 leading-relaxed">
-                      <span className="text-[#10B981] select-none">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Concerns */}
-              <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
-                <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
-                  <span>⚠️</span> FORESEEN SYSTEMIC CONCERNS
-                </h3>
-                <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
-                  {verdict.topConcerns.map((item, idx) => (
-                    <li key={idx} className="flex gap-2.5 leading-relaxed">
-                      <span className="text-rose-500 select-none">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-            </div>
-
-            {/* Polarizing Contentions */}
-            {verdict.mostPolarizingPair && (
-              <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
-                <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold border-b border-zinc-800 pb-2">
-                  PRIMARY COUNCIL DISSENSION
-                </span>
+              {/* Panelists testimonies */}
+              <div className="flex flex-col gap-4">
+                <h2 className="text-xs font-semibold text-[#9A9A92] font-mono uppercase tracking-wider border-b border-zinc-800 pb-2">
+                  📜 RECORDED TESTIMONIES OF PANELISTS
+                </h2>
                 
-                <div className="flex items-center gap-6 py-1">
-                  {/* Agent 1 */}
-                  <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
-                    <span className="text-2xl">
-                      {agents.find(a => a.name === verdict.mostPolarizingPair.agent1)?.avatar_emoji || "👤"}
-                    </span>
-                    <span className="text-sm font-bold text-white whitespace-nowrap">
-                      {verdict.mostPolarizingPair.agent1}
-                    </span>
-                  </div>
+                <div className="space-y-4">
+                  {(() => {
+                    const allExportMsgs = [
+                      ...displayedMessages.map(m => ({ ...m, round: m.round || 1 })),
+                      ...rebuttalMessages.map(m => ({ ...m, round: 3 }))
+                    ];
+                    return allExportMsgs.map((msg, index) => {
+                      const agent = agents.find(a => a.id === msg.agentId);
+                      const accentColor = getAgentColor(msg.agentId);
+                      const isFirstRound3 = msg.round === 3 && (index === 0 || allExportMsgs[index - 1].round !== 3);
+                      return (
+                        <div key={index} className="space-y-4">
+                          {isFirstRound3 && (
+                            <div className="flex items-center gap-4 py-4">
+                              <div className="h-[1px] flex-1 bg-zinc-850" />
+                              <span className="text-[11px] text-[#D4A24E] font-mono tracking-widest uppercase bg-[#1F2226] px-4 py-1.5 border border-[#D4A24E]/30 rounded-sm">
+                                💬 PANEL REBUTTAL ROUND
+                              </span>
+                              <div className="h-[1px] flex-1 bg-zinc-850" />
+                            </div>
+                          )}
+                          <div
+                            className="flex items-start gap-5 bg-[#1F2226] border border-zinc-800 p-5 rounded-r-xl"
+                            style={{ borderLeft: `4px solid ${accentColor}` }}
+                          >
+                            <div 
+                              className="h-12 w-12 rounded-full flex items-center justify-center text-2xl shrink-0 border border-zinc-800/30"
+                              style={{ backgroundColor: `${accentColor}18` }}
+                            >
+                              {msg.avatarEmoji}
+                            </div>
+                            
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-baseline justify-between">
+                                <h3 className="text-base font-semibold text-white font-sans">{msg.agentName}</h3>
+                                <span className="text-[10px] text-[#9A9A92] font-mono uppercase tracking-wider font-semibold">
+                                  {agent?.occupation || "Panelist"} • {agent?.location.split(",")[0] || ""}
+                                </span>
+                              </div>
+                              <p className="text-sm text-[#ECE8E1]/90 leading-relaxed font-sans font-light">{msg.content}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
 
-                  <span className="text-[10px] bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-3 py-1 rounded-full font-mono font-bold">
-                    VS
+              {/* Verdict Seal & Summary */}
+              <div className="grid grid-cols-12 gap-8 items-center bg-[#1F2226] border border-zinc-800 p-8 rounded-xl mt-4">
+                
+                {/* Verdict Seal Stamp */}
+                <div className="col-span-4 flex flex-col items-center justify-center text-center">
+                  <span className="font-serif text-sm font-medium text-[#D4A24E] tracking-wide mb-3">
+                    {isFinal ? "Final Appeal (After Rebuttal)" : "Public Appeal"}
                   </span>
-
-                  {/* Agent 2 */}
-                  <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
-                    <span className="text-2xl">
-                      {agents.find(a => a.name === verdict.mostPolarizingPair.agent2)?.avatar_emoji || "👤"}
+                  
+                  <div className="h-[150px] w-[150px] rounded-full border-4 border-double border-[#D4A24E] flex flex-col items-center justify-center select-none shadow-[inset_0_0_15px_rgba(212,162,78,0.1)] relative" style={{ transform: "rotate(-6deg)" }}>
+                    <div className="absolute inset-1 rounded-full border border-dashed border-[#D4A24E]/20" />
+                    <span className="text-5xl font-bold font-mono text-[#D4A24E] leading-none tracking-tight">
+                      {v.overallScore}
                     </span>
-                    <span className="text-sm font-bold text-white whitespace-nowrap">
-                      {verdict.mostPolarizingPair.agent2}
+                    <span className="text-xs font-mono text-[#D4A24E]/80 tracking-widest mt-1">
+                      / 100
                     </span>
                   </div>
+                  
+                  <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold">
+                    {v.overallScore >= 70 ? "HIGH SUPPORT" : v.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
+                  </span>
                 </div>
 
-                <p className="text-sm text-[#ECE8E1]/80 leading-relaxed font-sans">
-                  <strong className="text-white">Diverging Positions:</strong> {verdict.mostPolarizingPair.reason}
-                </p>
-              </div>
-            )}
+                {/* Judgment Summary */}
+                <div className="col-span-8 bg-[#16181A] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-3 h-full justify-center">
+                  <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold">
+                    {isFinal ? "FINAL JUDGMENT SUMMARY" : "JUDGMENT SUMMARY"}
+                  </span>
+                  <p className="text-base text-[#ECE8E1]/90 leading-relaxed font-sans italic">
+                    "{v.summary}"
+                  </p>
+                </div>
 
-            {/* Footer */}
-            <div className="border-t border-zinc-800 pt-6 mt-4 flex justify-between items-center text-xs text-[#9A9A92] font-mono">
-              <p>Generated with MirrorRoom (open source) — github.com/jrh4ck3r/mirroroom</p>
-              <p>POWERED BY NVIDIA NIM DIRECT CONNECTIONS</p>
+              </div>
+
+              {/* Findings Columns */}
+              <div className="grid grid-cols-2 gap-8">
+                
+                {/* Support */}
+                <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
+                  <h3 className="text-xs font-bold text-[#10B981] uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
+                    <span>✓</span> DETAILED FINDINGS OF SUPPORT
+                  </h3>
+                  <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
+                    {v.topSupport.map((item, idx) => (
+                      <li key={idx} className="flex gap-2.5 leading-relaxed">
+                        <span className="text-[#10B981] select-none">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Concerns */}
+                <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
+                  <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest font-mono flex items-center gap-2 border-b border-zinc-800 pb-2">
+                    <span>⚠️</span> FORESEEN SYSTEMIC CONCERNS
+                  </h3>
+                  <ul className="space-y-3 text-sm text-[#ECE8E1]/80">
+                    {v.topConcerns.map((item, idx) => (
+                      <li key={idx} className="flex gap-2.5 leading-relaxed">
+                        <span className="text-rose-500 select-none">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+              </div>
+
+              {/* Polarizing Contentions */}
+              {v.mostPolarizingPair && (
+                <div className="bg-[#1F2226] border-t-2 border-[#D4A24E] rounded-b-xl p-6 flex flex-col gap-4">
+                  <span className="text-xs text-[#D4A24E] font-mono uppercase tracking-widest font-semibold border-b border-zinc-800 pb-2">
+                    PRIMARY COUNCIL DISSENSION
+                  </span>
+                  
+                  <div className="flex items-center gap-6 py-1">
+                    {/* Agent 1 */}
+                    <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
+                      <span className="text-2xl">
+                        {agents.find(a => a.name === v.mostPolarizingPair.agent1)?.avatar_emoji || "👤"}
+                      </span>
+                      <span className="text-sm font-bold text-white whitespace-nowrap">
+                        {v.mostPolarizingPair.agent1}
+                      </span>
+                    </div>
+
+                    <span className="text-[10px] bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-3 py-1 rounded-full font-mono font-bold">
+                      VS
+                    </span>
+
+                    {/* Agent 2 */}
+                    <div className="flex items-center gap-3 bg-[#16181A] px-4 py-2.5 rounded-lg border border-zinc-800">
+                      <span className="text-2xl">
+                        {agents.find(a => a.name === v.mostPolarizingPair.agent2)?.avatar_emoji || "👤"}
+                      </span>
+                      <span className="text-sm font-bold text-white whitespace-nowrap">
+                        {v.mostPolarizingPair.agent2}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-[#ECE8E1]/80 leading-relaxed font-sans">
+                    <strong className="text-white">Diverging Positions:</strong> {v.mostPolarizingPair.reason}
+                  </p>
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="border-t border-zinc-800 pt-6 mt-4 flex justify-between items-center text-xs text-[#9A9A92] font-mono">
+                <p>Generated with MirrorRoom (open source) — github.com/jrh4ck3r/mirroroom</p>
+                <p>POWERED BY NVIDIA NIM DIRECT CONNECTIONS</p>
+              </div>
+
             </div>
 
           </div>
-
-        </div>
-      )}
+        );
+      })()}
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">

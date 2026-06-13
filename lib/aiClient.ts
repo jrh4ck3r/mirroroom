@@ -56,7 +56,8 @@ function buildMessages(
   agent: AgentProfile,
   idea: string,
   priorMessages: DebateMessage[],
-  round: number
+  round: number,
+  rebuttalText?: string
 ): ChatMessage[] {
   const messages: ChatMessage[] = [];
 
@@ -81,6 +82,23 @@ function buildMessages(
       userContent +=
         "\n\nYou are the first panelist to react. Give your honest reaction. Keep your response concise — 2-4 sentences maximum. Do not exceed this even if you have more to say.";
     }
+
+    messages.push({ role: "user", content: userContent });
+  } else if (round === 3) {
+    // Rebuttal round
+    let userContent = `The panel was asked to react to this idea:\n\n"${idea}"\n\nHere is the full transcript of the previous panel discussion:\n`;
+    for (const msg of priorMessages.filter((m) => m.round < 3)) {
+      userContent += `\n${msg.avatarEmoji} ${msg.agentName}: "${msg.content}"`;
+    }
+
+    // Identify this agent's own previous response(s)
+    const ownMessages = priorMessages.filter((m) => m.agentId === agent.id && m.round < 3);
+    if (ownMessages.length > 0) {
+      userContent += `\n\nYour own previous statement was: "${ownMessages[ownMessages.length - 1].content}"`;
+    }
+
+    userContent += `\n\nThe person who presented the idea has responded to the panel's feedback. Here is their rebuttal:\n\n"${rebuttalText}"\n\n`;
+    userContent += `React to their rebuttal honestly in 2-4 sentences. You may change your position if they made a compelling point, or hold firm if you're not convinced. Be specific about what changed your mind or what still concerns you. Keep your response concise — 2-4 sentences maximum. Do not exceed this even if you have more to say.`;
 
     messages.push({ role: "user", content: userContent });
   } else {
@@ -118,9 +136,10 @@ export async function getAgentResponse(
   idea: string,
   priorMessages: DebateMessage[],
   round: number,
-  providerConfig?: ProviderConfig
+  providerConfig?: ProviderConfig,
+  rebuttalText?: string
 ): Promise<string> {
-  const messages = buildMessages(agent, idea, priorMessages, round);
+  const messages = buildMessages(agent, idea, priorMessages, round, rebuttalText);
   const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
 
   const response = await fetch(url, {
@@ -167,9 +186,10 @@ export async function streamAgentResponse(
   idea: string,
   priorMessages: DebateMessage[],
   round: number,
-  providerConfig?: ProviderConfig
+  providerConfig?: ProviderConfig,
+  rebuttalText?: string
 ): Promise<ReadableStream<Uint8Array>> {
-  const messages = buildMessages(agent, idea, priorMessages, round);
+  const messages = buildMessages(agent, idea, priorMessages, round, rebuttalText);
   const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
 
   const response = await fetch(url, {
@@ -210,7 +230,8 @@ export async function generateVerdict(
   apiKey: string,
   idea: string,
   debateMessages: DebateMessage[],
-  providerConfig?: ProviderConfig
+  providerConfig?: ProviderConfig,
+  rebuttalText?: string
 ): Promise<string> {
   const transcriptLines = debateMessages.map(
     (m) =>
@@ -226,7 +247,11 @@ export async function generateVerdict(
 
 Return ONLY the JSON object, no markdown formatting, no explanation.`;
 
-  const userMessage = `Here is the idea that was debated:\n\n"${idea}"\n\nHere is the full debate transcript:\n\n${transcriptLines.join("\n")}\n\nNow produce the verdict JSON.`;
+  let userMessage = `Here is the idea that was debated:\n\n"${idea}"\n\n`;
+  if (rebuttalText) {
+    userMessage += `Here is the user's rebuttal to the panel's initial feedback:\n\n"${rebuttalText}"\n\n`;
+  }
+  userMessage += `Here is the full debate transcript:\n\n${transcriptLines.join("\n")}\n\nNow produce the verdict JSON.`;
 
   const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
 

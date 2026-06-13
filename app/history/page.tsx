@@ -106,8 +106,12 @@ export default function HistoryPage() {
             </div>
           </div>
           
-          <div className="flex items-center gap-4 font-mono text-xs">
-            <Link href="/" className="hover:text-white text-[#9A9A92] transition-colors flex items-center gap-1.5">
+          <div className="flex items-center gap-4 font-mono text-xs text-[#9A9A92]">
+            <Link href="/agents/builder" className="hover:text-white transition-colors flex items-center gap-1.5">
+              🛠️ AGENT BUILDER
+            </Link>
+            <span className="text-[#D4A24E]">•</span>
+            <Link href="/" className="hover:text-white transition-colors flex items-center gap-1.5">
               ⚖️ RETURN TO INQUESTS
             </Link>
             {debates.length > 0 && (

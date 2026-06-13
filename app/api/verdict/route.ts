@@ -96,7 +96,7 @@ function cleanAndParseJson(raw: string): any {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apiKey, providerConfig, ideaText, transcript } = body;
+    const { apiKey, providerConfig, ideaText, transcript, rebuttalText } = body;
 
     let finalApiKey = apiKey;
     // Bypass key validation for local providers
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
     }));
 
     console.log(`[verdict] Generating verdict for idea via provider "${providerConfig?.provider || "nvidia"}"`);
-    const rawVerdict = await generateVerdict(finalApiKey, ideaText, debateMessages, providerConfig);
+    const rawVerdict = await generateVerdict(finalApiKey, ideaText, debateMessages, providerConfig, rebuttalText);
 
     try {
       const parsedVerdict = cleanAndParseJson(rawVerdict);

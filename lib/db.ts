@@ -31,6 +31,23 @@ export function getDb(): Database.Database {
     )
   `);
 
+  // Add v1.1 rebuttal columns if they do not exist
+  try {
+    db.exec("ALTER TABLE debates ADD COLUMN rebuttal_text TEXT");
+  } catch (e) {
+    // Already exists, safe to ignore
+  }
+  try {
+    db.exec("ALTER TABLE debates ADD COLUMN rebuttal_transcript TEXT");
+  } catch (e) {
+    // Already exists, safe to ignore
+  }
+  try {
+    db.exec("ALTER TABLE debates ADD COLUMN final_verdict TEXT");
+  } catch (e) {
+    // Already exists, safe to ignore
+  }
+
   dbInstance = db;
   return db;
 }

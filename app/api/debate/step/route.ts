@@ -14,7 +14,7 @@ import { DebateMessage } from "@/lib/types";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apiKey, providerConfig, ideaText, agentId, priorMessages, round = 1 } = body;
+    const { apiKey, providerConfig, ideaText, agentId, priorMessages, round = 1, rebuttalText, customAgent } = body;
 
     // Resolve API key flexibly (body, Authorization header, or environment variable)
     let finalApiKey = apiKey;
@@ -61,10 +61,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Load agent profile
-    const agent = loadAgentById(agentId);
+    let agent = customAgent;
+    if (!agent && agentId) {
+      agent = loadAgentById(agentId);
+    }
+
     if (!agent) {
       return NextResponse.json(
-        { error: `Agent "${agentId}" not found` },
+        { error: `Agent profile not found` },
         { status: 404 }
       );
     }
@@ -88,7 +92,8 @@ export async function POST(request: NextRequest) {
       ideaText,
       cleanPriorMessages,
       round,
-      providerConfig
+      providerConfig,
+      rebuttalText
     );
 
     const message: DebateMessage = {

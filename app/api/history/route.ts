@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
           roomName: row.room_name,
           transcript: JSON.parse(row.transcript),
           verdict: JSON.parse(row.verdict),
+          rebuttalText: row.rebuttal_text || null,
+          rebuttalTranscript: row.rebuttal_transcript ? JSON.parse(row.rebuttal_transcript) : null,
+          finalVerdict: row.final_verdict ? JSON.parse(row.final_verdict) : null,
         },
       });
     } else {
@@ -94,6 +97,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, id });
   } catch (error) {
     console.error("[history-api] POST Error:", error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
+  }
+}
+
+// PUT /api/history
+export async function PUT(request: NextRequest) {
+  try {
+    const db = getDb();
+    const body = await request.json();
+    const { id, rebuttalText, rebuttalTranscript, finalVerdict } = body;
+
+    if (!id || !rebuttalText || !rebuttalTranscript || !finalVerdict) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    const rebuttalTranscriptStr = JSON.stringify(rebuttalTranscript);
+    const finalVerdictStr = JSON.stringify(finalVerdict);
+
+    const stmt = db.prepare(`
+      UPDATE debates 
+      SET rebuttal_text = ?, rebuttal_transcript = ?, final_verdict = ?
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(rebuttalText, rebuttalTranscriptStr, finalVerdictStr, id);
+
+    if (result.changes === 0) {
+      return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, message: "Debate updated with rebuttal round" });
+  } catch (error) {
+    console.error("[history-api] PUT Error:", error);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 });
   }
 }
