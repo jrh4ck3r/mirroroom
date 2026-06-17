@@ -183,6 +183,21 @@ You can configure a dedicated model/provider override specifically for synthesiz
 
 ---
 
+## 📊 Demographically Weighted Scoring
+
+For localized panels like **Malaysian Society**, MirrorRoom uses real-world demographic census statistics to weight the final verdict score. Instead of treating every panelist's opinion equally, the system weights each agent's sentiment score based on their ethnicity and age-band representation in the Malaysian population.
+
+- **Data Source:** Official census statistics queried from the [Government of Malaysia's open data catalogue (data.gov.my)](https://data.gov.my/data-catalogue/population_malaysia), crediting the Department of Statistics Malaysia (DOSM) for their open data initiative.
+- **Bands & Aggregates:** The system pulls 5-year census cohorts for all 6 target ethnicities (`bumi_malay`, `bumi_other`, `chinese`, `indian`, `other_citizen`, `other_noncitizen`) and aggregates them into MirrorRoom's broad age categories (18-30, 31-45, 46-60, 61+).
+- **Proportional Normalization:** At debate runtime, the system dynamically checks if all active panel agents have demographic weights. If they do, their weights are normalized to sum to `1.0` (excluding non-applicable global/custom agents), and the overall score represents the weighted sum of individual sentiment scores.
+- **Fallback Behavior:** If any agent in the session room does not represent a Malaysian demographic segment (e.g., custom agents or global agents in the *Silicon Valley* or *Gen Z Internet* rooms), the system automatically falls back to a simple unweighted average of panel sentiment scores.
+
+> [!NOTE]
+> **A statistical approximation caveat:**
+> This demographic weighting is designed as a reasonable approximation to correct panel composition bias (e.g. ensuring minority or majority groups are represented proportionally according to census data). It is *not* a scientifically validated survey or a replacement for real polling. It relies on persona mapping to broad demographic groups, not live human cohorts.
+
+---
+
 ## 📂 Local Debate History Database
 
 All focus group simulations are automatically saved locally at the end of each debate session.

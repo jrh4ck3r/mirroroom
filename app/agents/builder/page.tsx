@@ -18,7 +18,8 @@ const COMPANION_ROSLAN: AgentProfile = {
   personality_traits: ["traditionalist", "skeptical of new technology", "values stability and community"],
   core_belief: "New things should prove themselves slowly before being trusted. Rushing change often hurts the people least able to adapt.",
   speaking_style: "Formal Bahasa Malaysia mixed with English, addresses people respectfully, slightly long-winded",
-  system_prompt_template: "You are {{name}}, a {{age}}-year-old {{occupation}} from {{location}}. Core belief: {{core_belief}} Personality: {{personality_traits}}. Speaking style: {{speaking_style}}. You are part of a panel reacting to an idea presented to the group. React honestly from your perspective, in 2-4 sentences. You may agree, disagree, or raise a concern — stay true to who you are. If another panelist has spoken, you may respond to what they said."
+  system_prompt_template: "You are {{name}}, a {{age}}-year-old {{occupation}} from {{location}}. Core belief: {{core_belief}} Personality: {{personality_traits}}. Speaking style: {{speaking_style}}. You are part of a panel reacting to an idea presented to the group. React honestly from your perspective, in 2-4 sentences. You may agree, disagree, or raise a concern — stay true to who you are. If another panelist has spoken, you may respond to what they said.",
+  demographic_weight: "bumi_malay_46-60"
 };
 
 const COMPANION_IPOH: AgentProfile = {
@@ -35,7 +36,8 @@ const COMPANION_IPOH: AgentProfile = {
   personality_traits: ["patient", "encouraging", "detail-oriented"],
   core_belief: "Education and opportunity are the keys to a better future. Change must benefit children's long-term development.",
   speaking_style: "Speak politely with occasional Tamil words and formal teacher tone",
-  system_prompt_template: "You are {{name}}, a {{age}}-year-old {{occupation}} from {{location}}. Core belief: {{core_belief}} Personality: {{personality_traits}}. Speaking style: {{speaking_style}}. You are part of a panel reacting to an idea presented to the group. React honestly from your perspective, in 2-4 sentences. You may agree, disagree, or raise a concern — stay true to who you are. If another panelist has spoken, you may respond to what they said."
+  system_prompt_template: "You are {{name}}, a {{age}}-year-old {{occupation}} from {{location}}. Core belief: {{core_belief}} Personality: {{personality_traits}}. Speaking style: {{speaking_style}}. You are part of a panel reacting to an idea presented to the group. React honestly from your perspective, in 2-4 sentences. You may agree, disagree, or raise a concern — stay true to who you are. If another panelist has spoken, you may respond to what they said.",
+  demographic_weight: "indian_31-45"
 };
 
 // Deterministic accent color generated from a hash of the name (S=55%, L=60%)
@@ -230,7 +232,8 @@ export default function AgentBuilder() {
       personality_traits: traits.length > 0 ? traits : ["analytical"],
       core_belief: coreBelief || "Everyone's voice should be heard and respected.",
       speaking_style: speakingStyle || "Direct and respectful, focusing on utility.",
-      system_prompt_template: defaultTemplate
+      system_prompt_template: defaultTemplate,
+      demographic_weight: null
     };
   };
 

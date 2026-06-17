@@ -249,6 +249,7 @@ export async function generateVerdict(
 - "topSupport": an array of exactly 3 strings, each a concise point of support
 - "mostPolarizingPair": an object with "agent1" (name), "agent2" (name), and "reason" (one sentence why they disagreed)
 - "summary": a 2-3 sentence overall summary of the panel's reception
+- "agentSentimentScores": an object mapping each agent's name (exactly as it appears in the transcript) to a sentiment score from 0-100 (where 0 is strongly negative and 100 is strongly positive) representing their sentiment towards the idea based on their responses.
 
 Return ONLY the JSON object, no markdown formatting, no explanation.`;
 

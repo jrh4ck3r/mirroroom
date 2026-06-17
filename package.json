@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch-dosm-data": "npx tsx scripts/fetch-dosm-data.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

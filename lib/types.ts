@@ -18,6 +18,7 @@ export interface AgentProfile {
   core_belief: string;
   speaking_style: string;
   system_prompt_template: string;
+  demographic_weight: string | null;
 }
 
 export interface RoomPreset {
@@ -49,6 +50,7 @@ export interface Verdict {
     reason: string;
   };
   summary: string;
+  isWeighted?: boolean;
 }
 
 /** Debate session state */

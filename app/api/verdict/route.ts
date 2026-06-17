@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateVerdict } from "@/lib/aiClient";
 import { DebateMessage } from "@/lib/types";
+import { loadAgentById } from "@/lib/agentLoader";
+import fs from "fs";
+import path from "path";
 
 /**
  * Stack-based matching to extract the largest valid {...} substring from a string.
@@ -151,6 +154,92 @@ export async function POST(request: NextRequest) {
 
     try {
       const parsedVerdict = cleanAndParseJson(rawVerdict);
+
+      // Calculate weighted/unweighted scores
+      const uniqueAgentIds = Array.from(new Set(debateMessages.map(m => m.agentId)));
+      
+      // Load agent profiles and check demographic weights
+      const agentProfiles = uniqueAgentIds.map(id => loadAgentById(id));
+      const hasWeights = agentProfiles.every(p => p && typeof p.demographic_weight === "string");
+      
+      // Helper to match agent sentiment scores from JSON
+      const getSentimentScore = (agentName: string, agentId: string, scores: any): number | null => {
+        if (!scores || typeof scores !== 'object') return null;
+        
+        // Exact name match
+        if (typeof scores[agentName] === 'number') return scores[agentName];
+        
+        // Exact ID match
+        if (typeof scores[agentId] === 'number') return scores[agentId];
+        
+        // Case-insensitive name match
+        const normName = agentName.toLowerCase().trim();
+        const keyMatch = Object.keys(scores).find(k => k.toLowerCase().trim() === normName);
+        if (keyMatch && typeof scores[keyMatch] === 'number') return scores[keyMatch];
+        
+        // Substring match
+        const subKeyMatch = Object.keys(scores).find(k => {
+          const kNorm = k.toLowerCase().trim();
+          return kNorm.includes(normName) || normName.includes(kNorm);
+        });
+        if (subKeyMatch && typeof scores[subKeyMatch] === 'number') return scores[subKeyMatch];
+        
+        return null;
+      };
+
+      const agentScores = uniqueAgentIds.map((id, index) => {
+        const profile = agentProfiles[index];
+        const name = profile?.name || `Agent ${id}`;
+        const rawScore = getSentimentScore(name, id, parsedVerdict.agentSentimentScores);
+        const score = rawScore !== null ? rawScore : (parsedVerdict.overallScore ?? 50);
+        return {
+          id,
+          profile,
+          score
+        };
+      });
+
+      if (hasWeights) {
+        // Load demographics weights
+        let weights: Record<string, number> = {};
+        try {
+          const filePath = path.join(process.cwd(), "data", "dosm-demographics.json");
+          if (fs.existsSync(filePath)) {
+            const content = fs.readFileSync(filePath, "utf-8");
+            const parsed = JSON.parse(content);
+            weights = parsed.weights || {};
+          }
+        } catch (err) {
+          console.error("[verdict] Failed to read demographics file:", err);
+        }
+
+        const scoredWithWeights = agentScores.map(item => {
+          const wKey = item.profile!.demographic_weight!;
+          const weight = weights[wKey] ?? 0;
+          return { ...item, weight };
+        });
+
+        const totalWeight = scoredWithWeights.reduce((sum, item) => sum + item.weight, 0);
+        let finalScore = 0;
+        if (totalWeight > 0) {
+          finalScore = scoredWithWeights.reduce((sum, item) => sum + item.score * (item.weight / totalWeight), 0);
+          finalScore = Math.round(finalScore);
+        } else {
+          const sumScores = scoredWithWeights.reduce((sum, item) => sum + item.score, 0);
+          finalScore = Math.round(sumScores / scoredWithWeights.length);
+        }
+
+        parsedVerdict.overallScore = finalScore;
+        parsedVerdict.isWeighted = true;
+      } else {
+        // Unweighted fallback
+        const sumScores = agentScores.reduce((sum, item) => sum + item.score, 0);
+        const finalScore = agentScores.length > 0 ? Math.round(sumScores / agentScores.length) : (parsedVerdict.overallScore ?? 50);
+        
+        parsedVerdict.overallScore = finalScore;
+        parsedVerdict.isWeighted = false;
+      }
+
       return NextResponse.json({ verdict: parsedVerdict });
     } catch (parseError) {
       console.error("[verdict] Failed to parse verdict JSON after all attempts:", rawVerdict, parseError);

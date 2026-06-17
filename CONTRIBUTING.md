@@ -88,6 +88,20 @@ Rooms group specific agent profiles into a panel. They are defined under the `/r
 
 ---
 
+## 📊 Updating Demographics Data
+
+MirrorRoom caches the Department of Statistics Malaysia (DOSM) population data locally. This demographics snapshot is used to calculate the weighted scores of panels.
+
+To refresh or update the cached demographics snapshot from the live government catalogue:
+```bash
+npm run fetch-dosm-data
+```
+This script runs a build-time query to fetch the latest available census data from `data.gov.my`, aggregates the 5-year cohorts into our broad age bands, and updates `data/dosm-demographics.json`.
+
+Please run this command before submitting any PRs that modify demographic configurations to ensure the cached weights remain up-to-date.
+
+---
+
 ## 📬 Submitting a Pull Request
 
 1. **Fork the Repository** on GitHub.

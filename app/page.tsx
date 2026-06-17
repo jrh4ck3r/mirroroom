@@ -1553,6 +1553,23 @@ export default function Dashboard() {
                       <span className="font-mono text-[10px] uppercase tracking-widest text-[#D4A24E] mt-3 font-bold">
                         {verdict.overallScore >= 70 ? "HIGH SUPPORT" : verdict.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
                       </span>
+
+                      {verdict.isWeighted && (
+                        <div className="relative group flex justify-center mt-3">
+                          <div className="text-[10px] bg-[#D4A24E]/10 hover:bg-[#D4A24E]/20 text-[#D4A24E] border border-[#D4A24E]/30 px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5 cursor-help transition-all shadow-[0_2px_8px_rgba(212,162,78,0.05)]">
+                            <span>📊 Weighted by DOSM</span>
+                          </div>
+                          
+                          {/* Premium Tooltip */}
+                          <div className="absolute top-full mt-2 hidden group-hover:block w-64 bg-[#1F2226] border border-zinc-800 text-xs text-[#ECE8E1]/90 p-3 rounded-lg shadow-xl backdrop-blur-md z-30 leading-relaxed font-sans text-left transition-all duration-200">
+                            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#1F2226] border-t border-l border-zinc-800 rotate-45" />
+                            <p className="font-semibold text-white mb-1">Weighted by Malaysian population data (data.gov.my)</p>
+                            <p className="text-[11px] text-[#9A9A92]">
+                              This score is weighted using real Malaysian demographic proportions by ethnicity and age, not a simple average of panel opinions.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Summary Paragraph styled as Case File Index */}
@@ -1753,6 +1770,23 @@ export default function Dashboard() {
                         <span className="font-mono text-[10px] uppercase tracking-widest text-[#D4A24E] mt-3 font-bold">
                           {finalVerdict.overallScore >= 70 ? "HIGH SUPPORT" : finalVerdict.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
                         </span>
+
+                        {finalVerdict.isWeighted && (
+                          <div className="relative group flex justify-center mt-3">
+                            <div className="text-[10px] bg-[#D4A24E]/10 hover:bg-[#D4A24E]/20 text-[#D4A24E] border border-[#D4A24E]/30 px-2.5 py-1 rounded-full font-mono flex items-center gap-1.5 cursor-help transition-all shadow-[0_2px_8px_rgba(212,162,78,0.05)]">
+                              <span>📊 Weighted by DOSM</span>
+                            </div>
+                            
+                            {/* Premium Tooltip */}
+                            <div className="absolute top-full mt-2 hidden group-hover:block w-64 bg-[#1F2226] border border-zinc-800 text-xs text-[#ECE8E1]/90 p-3 rounded-lg shadow-xl backdrop-blur-md z-30 leading-relaxed font-sans text-left transition-all duration-200">
+                              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#1F2226] border-t border-l border-zinc-800 rotate-45" />
+                              <p className="font-semibold text-white mb-1">Weighted by Malaysian population data (data.gov.my)</p>
+                              <p className="text-[11px] text-[#9A9A92]">
+                                This score is weighted using real Malaysian demographic proportions by ethnicity and age, not a simple average of panel opinions.
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Summary Paragraph */}
@@ -1920,9 +1954,15 @@ export default function Dashboard() {
                     </span>
                   </div>
                   
-                  <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold">
+                  <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold border-b border-[#D4A24E]/25 pb-1">
                     {v.overallScore >= 70 ? "HIGH SUPPORT" : v.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
                   </span>
+
+                  {v.isWeighted && (
+                    <span className="text-[10px] text-[#9A9A92] font-mono uppercase mt-2.5 block text-center font-bold">
+                      📊 Weighted by Malaysian population data (data.gov.my)
+                    </span>
+                  )}
                 </div>
 
                 {/* Judgment Summary */}
@@ -2131,9 +2171,15 @@ export default function Dashboard() {
                     </span>
                   </div>
                   
-                  <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold">
+                  <span className="font-mono text-xs uppercase tracking-widest text-[#D4A24E] mt-4 font-bold border-b border-[#D4A24E]/25 pb-1">
                     {v.overallScore >= 70 ? "HIGH SUPPORT" : v.overallScore >= 40 ? "MIXED / POLARIZED" : "LOW APPEAL"}
                   </span>
+
+                  {v.isWeighted && (
+                    <span className="text-[10px] text-[#9A9A92] font-mono uppercase mt-2.5 block text-center font-bold">
+                      📊 Weighted by Malaysian population data (data.gov.my)
+                    </span>
+                  )}
                 </div>
 
                 {/* Judgment Summary */}

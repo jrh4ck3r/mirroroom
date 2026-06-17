@@ -1,0 +1,30 @@
+{
+  "lastFetched": "2026-06-17T15:06:08.834Z",
+  "source": "https://api.data.gov.my/data-catalogue?id=population_malaysia",
+  "weights": {
+    "bumi_malay_18-30": 0.1578,
+    "bumi_malay_31-45": 0.164299,
+    "bumi_malay_46-60": 0.104649,
+    "bumi_malay_61+": 0.075756,
+    "bumi_other_18-30": 0.034728,
+    "bumi_other_31-45": 0.035744,
+    "bumi_other_46-60": 0.021926,
+    "bumi_other_61+": 0.015538,
+    "chinese_18-30": 0.05224,
+    "chinese_31-45": 0.06311,
+    "chinese_46-60": 0.055058,
+    "chinese_61+": 0.042604,
+    "indian_18-30": 0.016721,
+    "indian_31-45": 0.019596,
+    "indian_46-60": 0.014382,
+    "indian_61+": 0.010271,
+    "other_citizen_18-30": 0.001925,
+    "other_citizen_31-45": 0.002401,
+    "other_citizen_46-60": 0.001253,
+    "other_citizen_61+": 0.000924,
+    "other_noncitizen_18-30": 0.050085,
+    "other_noncitizen_31-45": 0.041861,
+    "other_noncitizen_46-60": 0.009906,
+    "other_noncitizen_61+": 0.007224
+  }
+}
