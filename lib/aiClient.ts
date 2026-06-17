@@ -21,6 +21,9 @@ function getRequestConfig(apiKey: string, providerConfig?: ProviderConfig) {
   let url = NIM_API_URL;
   let authHeader = `Bearer ${apiKey}`;
   let model = DEFAULT_MODEL;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
 
   if (providerConfig) {
     const { provider, baseUrl, apiKey: configKey, modelName } = providerConfig;
@@ -28,6 +31,12 @@ function getRequestConfig(apiKey: string, providerConfig?: ProviderConfig) {
       url = NIM_API_URL;
       authHeader = `Bearer ${configKey || apiKey}`;
       model = modelName || DEFAULT_MODEL;
+    } else if (provider === "openrouter") {
+      url = "https://openrouter.ai/api/v1/chat/completions";
+      authHeader = `Bearer ${configKey || apiKey}`;
+      model = modelName || "meta-llama/llama-3.3-70b-instruct";
+      headers["HTTP-Referer"] = "https://github.com/jrh4ck3r/mirroroom";
+      headers["X-Title"] = "MirrorRoom";
     } else if (provider === "ollama") {
       const base = (baseUrl || "http://localhost:11434/v1").replace(/\/$/, "");
       url = `${base}/chat/completions`;
@@ -46,7 +55,9 @@ function getRequestConfig(apiKey: string, providerConfig?: ProviderConfig) {
     }
   }
 
-  return { url, authHeader, model };
+  headers["Authorization"] = authHeader;
+
+  return { url, headers, model };
 }
 
 /**
@@ -140,14 +151,11 @@ export async function getAgentResponse(
   rebuttalText?: string
 ): Promise<string> {
   const messages = buildMessages(agent, idea, priorMessages, round, rebuttalText);
-  const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
+  const { url, headers, model } = getRequestConfig(apiKey, providerConfig);
 
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: authHeader,
-    },
+    headers,
     body: JSON.stringify({
       model: model,
       messages,
@@ -190,14 +198,11 @@ export async function streamAgentResponse(
   rebuttalText?: string
 ): Promise<ReadableStream<Uint8Array>> {
   const messages = buildMessages(agent, idea, priorMessages, round, rebuttalText);
-  const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
+  const { url, headers, model } = getRequestConfig(apiKey, providerConfig);
 
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: authHeader,
-    },
+    headers,
     body: JSON.stringify({
       model: model,
       messages,
@@ -253,14 +258,11 @@ Return ONLY the JSON object, no markdown formatting, no explanation.`;
   }
   userMessage += `Here is the full debate transcript:\n\n${transcriptLines.join("\n")}\n\nNow produce the verdict JSON.`;
 
-  const { url, authHeader, model } = getRequestConfig(apiKey, providerConfig);
+  const { url, headers, model } = getRequestConfig(apiKey, providerConfig);
 
   const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: authHeader,
-    },
+    headers,
     body: JSON.stringify({
       model: model,
       messages: [

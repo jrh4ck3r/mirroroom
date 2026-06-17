@@ -35,6 +35,7 @@ export interface DebateMessage {
   content: string;
   round: number; // 1 = initial reaction, 2 = cross-reaction
   timestamp: number;
+  modelLabel?: string;
 }
 
 /** The verdict produced after all agents have debated */
@@ -63,7 +64,7 @@ export interface DebateSession {
 
 /** Config settings for local/custom LLM providers */
 export interface ProviderConfig {
-  provider: "nvidia" | "ollama" | "lm-studio" | "custom";
+  provider: "nvidia" | "ollama" | "lm-studio" | "openrouter" | "custom";
   baseUrl?: string;
   apiKey?: string;
   modelName?: string;

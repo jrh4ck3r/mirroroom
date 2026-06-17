@@ -99,9 +99,20 @@ export async function POST(request: NextRequest) {
     const { apiKey, providerConfig, ideaText, transcript, rebuttalText } = body;
 
     let finalApiKey = apiKey;
+    if (providerConfig?.apiKey) {
+      finalApiKey = providerConfig.apiKey;
+    }
     // Bypass key validation for local providers
     if (providerConfig && (providerConfig.provider === "ollama" || providerConfig.provider === "lm-studio")) {
       if (!finalApiKey) finalApiKey = "dummy_key";
+    }
+
+    if (!finalApiKey) {
+      if (providerConfig?.provider === "openrouter") {
+        finalApiKey = process.env.OPENROUTER_API_KEY;
+      } else {
+        finalApiKey = process.env.NVIDIA_API_KEY;
+      }
     }
 
     // Validate inputs
@@ -132,6 +143,7 @@ export async function POST(request: NextRequest) {
       content: m.response || m.content || "",
       round: m.round || 1,
       timestamp: m.timestamp || Date.now(),
+      modelLabel: m.modelLabel || "",
     }));
 
     console.log(`[verdict] Generating verdict for idea via provider "${providerConfig?.provider || "nvidia"}"`);

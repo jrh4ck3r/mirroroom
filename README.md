@@ -136,7 +136,12 @@ MirrorRoom supports cloud API options as well as running fully offline on your o
 - Requires an API Key from [build.nvidia.com](https://build.nvidia.com) (free tier key available).
 - Uses `meta/llama-3.3-70b-instruct` by default.
 
-### 2. Run Fully Offline with Ollama
+### 2. OpenRouter (Cloud)
+- Integrates directly with [OpenRouter](https://openrouter.ai).
+- Requires an API key (`OPENROUTER_API_KEY` environment variable or entered via settings).
+- Supports any namespaced model identifier (e.g. `google/gemini-2.5-flash`, `anthropic/claude-3.5-sonnet`).
+
+### 3. Run Fully Offline with Ollama
 - Install [Ollama](https://ollama.com) on your local machine.
 - Pull a compatible model (we recommend `llama3.1:70b` for full persona nuance, but smaller models like `llama3.1:8b` or `mistral:7b` work as well for testing):
   ```bash
@@ -148,7 +153,7 @@ MirrorRoom supports cloud API options as well as running fully offline on your o
   - Enter your pulled Model ID (e.g. `llama3.1:70b`).
 - No API key is needed. Internet connection is not required after loading page assets.
 
-### 3. Run Fully Offline with LM Studio
+### 4. Run Fully Offline with LM Studio
 - Install [LM Studio](https://lmstudio.ai).
 - Download and load your model of choice.
 - Start the Local Server in LM Studio (default port: `1234`).
@@ -157,9 +162,24 @@ MirrorRoom supports cloud API options as well as running fully offline on your o
   - Set the base URL (default: `http://localhost:1234/v1`).
 - MirrorRoom will automatically use whichever model is currently active in the LM Studio application.
 
-### 4. Custom OpenAI-Compatible Endpoints
-- Point to any OpenAI-compatible custom gateway (like Groq, OpenRouter, or self-hosted vLLM servers).
+### 5. Custom OpenAI-Compatible Endpoints
+- Point to any OpenAI-compatible custom gateway (like Groq or self-hosted vLLM servers).
 - Set your Custom Base URL, API Key (optional), and Target Model Name.
+
+---
+
+## 🪞 Mix and Match Models (Multi-Model Debates)
+
+MirrorRoom allows you to assign a **different AI provider and model to each agent individually**!
+
+1. Open the **⚙️ Settings** modal.
+2. Go to the **Agent Lab** tab.
+3. For any agent on the panel, toggle their provider from "Use Global default" to a specific provider (e.g., OpenRouter, Ollama, NVIDIA NIM, etc.).
+4. Enter the specific Model ID (e.g., `google/gemini-2.5-flash` or `anthropic/claude-3.5-sonnet`) and an optional agent-specific API key override.
+5. Apply settings and start the debate. Each agent will speak via their designated model backend, and the transcript/attendance card will display visual badges (e.g., `via gemini-2.5-flash (OpenRouter)`) indicating exactly which model generated the response. These details are stored permanently in the SQLite debate history database.
+
+### ⚖️ Custom Verdict Engine
+You can configure a dedicated model/provider override specifically for synthesizing the final **scorecard verdict**! Under the **Verdict** tab in Settings, toggle the provider from default and select a powerful reasoning model to analyze and score the debate transcript.
 
 ---
 

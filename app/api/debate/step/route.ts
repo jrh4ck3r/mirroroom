@@ -19,6 +19,11 @@ export async function POST(request: NextRequest) {
     // Resolve API key flexibly (body, Authorization header, or environment variable)
     let finalApiKey = apiKey;
 
+    // Prioritize providerConfig.apiKey if defined on override config
+    if (providerConfig?.apiKey) {
+      finalApiKey = providerConfig.apiKey;
+    }
+
     // If local provider (Ollama or LM Studio), set dummy key to satisfy validation if missing
     if (providerConfig && (providerConfig.provider === "ollama" || providerConfig.provider === "lm-studio")) {
       if (!finalApiKey) finalApiKey = "dummy_key";
@@ -31,7 +36,11 @@ export async function POST(request: NextRequest) {
       }
     }
     if (!finalApiKey) {
-      finalApiKey = process.env.NVIDIA_API_KEY;
+      if (providerConfig?.provider === "openrouter") {
+        finalApiKey = process.env.OPENROUTER_API_KEY;
+      } else {
+        finalApiKey = process.env.NVIDIA_API_KEY;
+      }
     }
 
     // Validate inputs
@@ -83,6 +92,7 @@ export async function POST(request: NextRequest) {
       content: m.content || m.response || "",
       round: m.round || 1,
       timestamp: m.timestamp || Date.now(),
+      modelLabel: m.modelLabel || "",
     }));
 
     // Generate response
@@ -96,6 +106,16 @@ export async function POST(request: NextRequest) {
       rebuttalText
     );
 
+    let modelLabel = "";
+    if (providerConfig) {
+      const p = providerConfig.provider;
+      const m = providerConfig.modelName || (p === "nvidia" ? "meta/llama-3.3-70b-instruct" : p === "ollama" ? "llama3.1:70b" : p === "lm-studio" ? "Default Model" : p === "openrouter" ? "meta-llama/llama-3.3-70b-instruct" : "Model");
+      const formattedProvider = p === "nvidia" ? "Nvidia" : p === "openrouter" ? "OpenRouter" : p === "ollama" ? "Ollama" : p === "lm-studio" ? "LM Studio" : "Custom";
+      modelLabel = `${m} (${formattedProvider})`;
+    } else {
+      modelLabel = "meta/llama-3.3-70b-instruct (Nvidia)";
+    }
+
     const message: DebateMessage = {
       agentId: agent.id,
       agentName: agent.name,
@@ -103,6 +123,7 @@ export async function POST(request: NextRequest) {
       content: response,
       round,
       timestamp: Date.now(),
+      modelLabel,
     };
 
     return NextResponse.json({ success: true, message });

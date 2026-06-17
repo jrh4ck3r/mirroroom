@@ -109,11 +109,96 @@ export default function Dashboard() {
   });
 
   // Settings modal draft state
-  const [tempProvider, setTempProvider] = useState<"nvidia" | "ollama" | "lm-studio" | "custom">("nvidia");
+  const [tempProvider, setTempProvider] = useState<"nvidia" | "ollama" | "lm-studio" | "openrouter" | "custom">("nvidia");
   const [tempBaseUrl, setTempBaseUrl] = useState("");
   const [tempApiKey, setTempApiKey] = useState("");
   const [tempModelName, setTempModelName] = useState("");
   const [tempMaxTokens, setTempMaxTokens] = useState<number | "">("");
+
+  // Decoupled states for each provider
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({
+    nvidia: "",
+    openrouter: "",
+    ollama: "",
+    "lm-studio": "",
+    custom: ""
+  });
+  const [providerUrls, setProviderUrls] = useState<Record<string, string>>({
+    nvidia: "",
+    openrouter: "",
+    ollama: "http://localhost:11434/v1",
+    "lm-studio": "http://localhost:1234/v1",
+    custom: ""
+  });
+  const [providerModels, setProviderModels] = useState<Record<string, string>>({
+    nvidia: "meta/llama-3.3-70b-instruct",
+    openrouter: "meta-llama/llama-3.3-70b-instruct",
+    ollama: "llama3.1:70b",
+    "lm-studio": "",
+    custom: "meta/llama-3.3-70b-instruct"
+  });
+
+  // Overrides mapping
+  const [agentOverrides, setAgentOverrides] = useState<Record<string, { provider: string; modelName?: string; apiKey?: string }>>({});
+  const [verdictOverride, setVerdictOverride] = useState<{ provider: string; modelName?: string; apiKey?: string } | null>(null);
+
+  // Modal temporary states
+  const [tempAgentOverrides, setTempAgentOverrides] = useState<Record<string, { provider: string; modelName?: string; apiKey?: string }>>({});
+  const [tempVerdictOverride, setTempVerdictOverride] = useState<{ provider: string; modelName?: string; apiKey?: string } | null>(null);
+  const [settingsTab, setSettingsTab] = useState<"global" | "verdict" | "agents">("global");
+
+  // Helper to format the agent model label
+  const getAgentLabel = (agentId: string) => {
+    const override = agentOverrides[agentId];
+    if (override && override.provider && override.provider !== "global") {
+      const p = override.provider;
+      const m = override.modelName || (p === "nvidia" ? "meta/llama-3.3-70b-instruct" : p === "ollama" ? "llama3.1:70b" : p === "lm-studio" ? "Default Model" : p === "openrouter" ? "meta-llama/llama-3.3-70b-instruct" : "Model");
+      const formattedProvider = p === "nvidia" ? "Nvidia" : p === "openrouter" ? "OpenRouter" : p === "ollama" ? "Ollama" : p === "lm-studio" ? "LM Studio" : "Custom";
+      return `${m} (${formattedProvider})`;
+    }
+    return null;
+  };
+
+  const getAgentProviderConfig = (agentId: string): ProviderConfig => {
+    const override = agentOverrides[agentId];
+    if (override && override.provider && override.provider !== "global") {
+      const prov = override.provider;
+      return {
+        provider: prov as any,
+        baseUrl: providerUrls[prov] || "",
+        apiKey: override.apiKey || providerKeys[prov] || "",
+        modelName: override.modelName || providerModels[prov] || "",
+        maxTokens: providerConfig.maxTokens
+      };
+    }
+    return {
+      provider: providerConfig.provider,
+      baseUrl: providerConfig.baseUrl,
+      apiKey: providerConfig.apiKey || apiKey,
+      modelName: providerConfig.modelName,
+      maxTokens: providerConfig.maxTokens
+    };
+  };
+
+  const getVerdictProviderConfig = (): ProviderConfig => {
+    if (verdictOverride && verdictOverride.provider && verdictOverride.provider !== "global") {
+      const prov = verdictOverride.provider;
+      return {
+        provider: prov as any,
+        baseUrl: providerUrls[prov] || "",
+        apiKey: verdictOverride.apiKey || providerKeys[prov] || "",
+        modelName: verdictOverride.modelName || providerModels[prov] || "",
+        maxTokens: providerConfig.maxTokens
+      };
+    }
+    return {
+      provider: providerConfig.provider,
+      baseUrl: providerConfig.baseUrl,
+      apiKey: providerConfig.apiKey || apiKey,
+      modelName: providerConfig.modelName,
+      maxTokens: providerConfig.maxTokens
+    };
+  };
 
   // Toast notifications state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -128,8 +213,49 @@ export default function Dashboard() {
   // Fetch rooms and agents on load
   useEffect(() => {
     // Retrieve saved API key (legacy)
-    const savedKey = localStorage.getItem("mirroroom_nvapi_key");
+    const savedKey = localStorage.getItem("mirroroom_nvapi_key") || "";
     if (savedKey) setApiKey(savedKey);
+
+    // Retrieve dictionary values and overrides
+    const keysStr = localStorage.getItem("mirroroom_provider_keys");
+    let loadedKeys: Record<string, string> = { nvidia: "", openrouter: "", ollama: "", "lm-studio": "", custom: "" };
+    if (keysStr) {
+      try {
+        loadedKeys = { ...loadedKeys, ...JSON.parse(keysStr) };
+        setProviderKeys(loadedKeys);
+      } catch (e) {}
+    } else if (savedKey) {
+      loadedKeys.nvidia = savedKey;
+      setProviderKeys(loadedKeys);
+    }
+
+    const urlsStr = localStorage.getItem("mirroroom_provider_urls");
+    if (urlsStr) {
+      try {
+        setProviderUrls(prev => ({ ...prev, ...JSON.parse(urlsStr) }));
+      } catch (e) {}
+    }
+
+    const modelsStr = localStorage.getItem("mirroroom_provider_models");
+    if (modelsStr) {
+      try {
+        setProviderModels(prev => ({ ...prev, ...JSON.parse(modelsStr) }));
+      } catch (e) {}
+    }
+
+    const agentOverridesStr = localStorage.getItem("mirroroom_agent_overrides");
+    if (agentOverridesStr) {
+      try {
+        setAgentOverrides(JSON.parse(agentOverridesStr));
+      } catch (e) {}
+    }
+
+    const verdictOverrideStr = localStorage.getItem("mirroroom_verdict_override");
+    if (verdictOverrideStr) {
+      try {
+        setVerdictOverride(JSON.parse(verdictOverrideStr));
+      } catch (e) {}
+    }
 
     // Retrieve saved Provider Config
     const savedConfigStr = localStorage.getItem("mirroroom_provider_config");
@@ -262,6 +388,31 @@ export default function Dashboard() {
       if (!finalBaseUrl) finalBaseUrl = "http://localhost:1234/v1";
     } else if (tempProvider === "nvidia") {
       if (!finalModelName) finalModelName = "meta/llama-3.3-70b-instruct";
+    } else if (tempProvider === "openrouter") {
+      if (!finalModelName) finalModelName = "meta-llama/llama-3.3-70b-instruct";
+    }
+
+    // Update keys/urls/models dictionary states
+    const updatedKeys = { ...providerKeys, [tempProvider]: tempApiKey };
+    const updatedUrls = { ...providerUrls, [tempProvider]: finalBaseUrl };
+    const updatedModels = { ...providerModels, [tempProvider]: finalModelName };
+
+    setProviderKeys(updatedKeys);
+    setProviderUrls(updatedUrls);
+    setProviderModels(updatedModels);
+
+    setAgentOverrides(tempAgentOverrides);
+    setVerdictOverride(tempVerdictOverride);
+
+    // Save dictionaries to localStorage
+    localStorage.setItem("mirroroom_provider_keys", JSON.stringify(updatedKeys));
+    localStorage.setItem("mirroroom_provider_urls", JSON.stringify(updatedUrls));
+    localStorage.setItem("mirroroom_provider_models", JSON.stringify(updatedModels));
+    localStorage.setItem("mirroroom_agent_overrides", JSON.stringify(tempAgentOverrides));
+    if (tempVerdictOverride) {
+      localStorage.setItem("mirroroom_verdict_override", JSON.stringify(tempVerdictOverride));
+    } else {
+      localStorage.removeItem("mirroroom_verdict_override");
     }
 
     handleSaveProviderConfig({
@@ -280,6 +431,10 @@ export default function Dashboard() {
     setTempApiKey(providerConfig.apiKey || "");
     setTempModelName(providerConfig.modelName || "");
     setTempMaxTokens(providerConfig.maxTokens !== undefined ? providerConfig.maxTokens : "");
+
+    setTempAgentOverrides(agentOverrides);
+    setTempVerdictOverride(verdictOverride);
+    setSettingsTab("global");
     setShowSettingsModal(true);
   };
 
@@ -422,7 +577,8 @@ export default function Dashboard() {
 
   // Run the sequential focus group simulation step-by-step
   const handleRunSimulation = async () => {
-    if (!apiKey && (providerConfig.provider === "nvidia" || providerConfig.provider === "custom")) {
+    const globalRequiresKey = providerConfig.provider === "nvidia" || providerConfig.provider === "openrouter" || providerConfig.provider === "custom";
+    if (globalRequiresKey && !apiKey) {
       setError("Please configure your API Key in Settings first.");
       return;
     }
@@ -478,7 +634,7 @@ export default function Dashboard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             apiKey,
-            providerConfig,
+            providerConfig: getAgentProviderConfig(agentId),
             ideaText,
             agentId,
             priorMessages: accumulatedTranscript,
@@ -519,7 +675,7 @@ export default function Dashboard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             apiKey,
-            providerConfig,
+            providerConfig: getVerdictProviderConfig(),
             ideaText,
             transcript: accumulatedTranscript.map(m => ({
               agentId: m.agentId,
@@ -591,7 +747,7 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           apiKey,
-          providerConfig,
+          providerConfig: getVerdictProviderConfig(),
           ideaText,
           transcript: displayedMessages.map(m => ({
             agentId: m.agentId,
@@ -644,7 +800,8 @@ export default function Dashboard() {
 
   // Run the rebuttal round (Round 3)
   const handleSendRebuttal = async () => {
-    if (!apiKey && (providerConfig.provider === "nvidia" || providerConfig.provider === "custom")) {
+    const globalRequiresKey = providerConfig.provider === "nvidia" || providerConfig.provider === "openrouter" || providerConfig.provider === "custom";
+    if (globalRequiresKey && !apiKey) {
       setError("Please configure your API Key in Settings first.");
       return;
     }
@@ -687,7 +844,7 @@ export default function Dashboard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             apiKey,
-            providerConfig,
+            providerConfig: getAgentProviderConfig(agentId),
             ideaText,
             agentId,
             priorMessages: [
@@ -732,7 +889,7 @@ export default function Dashboard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             apiKey,
-            providerConfig,
+            providerConfig: getVerdictProviderConfig(),
             ideaText,
             transcript: [
               ...displayedMessages,
@@ -807,7 +964,7 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           apiKey,
-          providerConfig,
+          providerConfig: getVerdictProviderConfig(),
           ideaText,
           transcript: [
             ...displayedMessages,
@@ -1050,12 +1207,12 @@ export default function Dashboard() {
             {/* CTA Button */}
             <button
               onClick={handleRunSimulation}
-              disabled={isDebating || !apiKey || !ideaText.trim() || isSharedMode}
+              disabled={isDebating || ((providerConfig.provider === "nvidia" || providerConfig.provider === "openrouter" || providerConfig.provider === "custom") && !apiKey) || !ideaText.trim() || isSharedMode}
               id="start-debate-btn"
               className={`w-full py-3 px-4 rounded-lg font-semibold text-sm transition-all text-center flex items-center justify-center gap-2 border font-mono tracking-widest ${
                 isDebating
                   ? "bg-zinc-900 border-zinc-800 text-zinc-500 cursor-not-allowed"
-                  : !apiKey || !ideaText.trim() || isSharedMode
+                  : ((providerConfig.provider === "nvidia" || providerConfig.provider === "openrouter" || providerConfig.provider === "custom") && !apiKey) || !ideaText.trim() || isSharedMode
                   ? "bg-zinc-900/50 border-zinc-800 text-zinc-500 cursor-not-allowed"
                   : "bg-[#D4A24E] text-[#16181A] border-[#D4A24E] font-bold hover:bg-[#ECE8E1] hover:border-[#ECE8E1] cursor-pointer transition-colors shadow-md"
               }`}
@@ -1121,22 +1278,36 @@ export default function Dashboard() {
                       {agent.avatar_emoji}
                     </div>
 
-                    <div className="flex flex-col gap-0.5 overflow-hidden">
+                    <div className="flex flex-col gap-0.5 overflow-hidden w-full">
                       <div className="flex items-center gap-1.5 w-full justify-between">
                         <span className="font-semibold text-[#ECE8E1] truncate font-sans">{agent.name}</span>
                         {isSpeaking && (
-                          <span className="flex h-1.5 w-1.5 relative">
+                          <span className="flex h-1.5 w-1.5 relative shrink-0">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#D4A24E]"></span>
                           </span>
                         )}
                         {hasSpoken && (
-                          <span className="text-emerald-500 font-mono text-[9px] font-bold">✓</span>
+                          <span className="text-emerald-500 font-mono text-[9px] font-bold shrink-0">✓</span>
                         )}
                       </div>
-                      <span className="text-[9px] text-[#9A9A92] truncate font-mono tracking-wider uppercase font-semibold">
+                      <span className="text-[9px] text-[#9A9A92] truncate font-mono tracking-wider uppercase font-semibold block">
                         {agent.occupation.split(",")[0]}
                       </span>
+                      {(() => {
+                        const label = getAgentLabel(agent.id);
+                        if (label) {
+                          const parts = label.split(" (");
+                          const cleanModel = parts[0].split("/").pop();
+                          const cleanProv = parts[1] ? parts[1].replace(")", "") : "";
+                          return (
+                            <span className="text-[8px] text-[#D4A24E]/80 truncate font-mono mt-0.5 block font-bold uppercase tracking-tight">
+                              via {cleanModel} ({cleanProv})
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                 );
@@ -1213,7 +1384,12 @@ export default function Dashboard() {
                           
                           <div className="flex-1 space-y-1">
                             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
-                              <h3 className="text-sm font-semibold text-white font-sans">{msg.agentName}</h3>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-semibold text-white font-sans">{msg.agentName}</h3>
+                                <span className="text-[8px] font-mono bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-1 rounded-sm uppercase tracking-wide">
+                                  via {msg.modelLabel?.split(" (")[0].split("/").pop() || "llama-3.3"} ({(msg.modelLabel?.split(" (")[1] || "Nvidia)").replace(")", "")})
+                                </span>
+                              </div>
                               <span className="text-[9px] text-[#9A9A92] font-mono uppercase tracking-wider font-semibold">
                                 {agent?.occupation || "Panelist"} • {agent?.location.split(",")[0] || ""}
                               </span>
@@ -1709,6 +1885,8 @@ export default function Dashboard() {
                 <div className="text-right font-mono text-xs text-[#9A9A92] space-y-1">
                   <div>ROOM / PANEL: <span className="text-white font-semibold">{currentRoom?.name.toUpperCase()}</span></div>
                   <div>PANELISTS: <span className="text-white font-semibold">{currentRoomAgents.length} SEATS</span></div>
+                  <div>VERDICT ENGINE: <span className="text-[#D4A24E] font-semibold">{getVerdictProviderConfig().modelName?.split("/").pop() || "meta/llama-3.3-70b-instruct"} ({getVerdictProviderConfig().provider.toUpperCase()})</span></div>
+                  <div>MODELS USED: <span className="text-white font-semibold">{Array.from(new Set(displayedMessages.map(m => m.modelLabel?.split(" (")[0].split("/").pop() || "llama-3.3"))).join(", ").toUpperCase()}</span></div>
                   <div>DATE: <span className="text-[#D4A24E] font-semibold">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase()}</span></div>
                 </div>
               </div>
@@ -1914,7 +2092,12 @@ export default function Dashboard() {
                             
                             <div className="flex-1 space-y-1">
                               <div className="flex items-baseline justify-between">
-                                <h3 className="text-base font-semibold text-white font-sans">{msg.agentName}</h3>
+                                <div className="flex items-center gap-2.5">
+                                  <h3 className="text-base font-semibold text-white font-sans">{msg.agentName}</h3>
+                                  <span className="text-[9px] font-mono bg-[#D4A24E]/10 text-[#D4A24E] border border-[#D4A24E]/25 px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                                    via {msg.modelLabel?.split(" (")[0].split("/").pop() || "llama-3.3"} ({(msg.modelLabel?.split(" (")[1] || "Nvidia)").replace(")", "")})
+                                  </span>
+                                </div>
                                 <span className="text-[10px] text-[#9A9A92] font-mono uppercase tracking-wider font-semibold">
                                   {agent?.occupation || "Panelist"} • {agent?.location.split(",")[0] || ""}
                                 </span>
@@ -2050,7 +2233,6 @@ export default function Dashboard() {
           </div>
         );
       })()}
-      {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
           <div className="bg-[#1F2226] border border-zinc-800 rounded-xl p-6 max-w-md w-full flex flex-col gap-5 relative animate-card-slide">
@@ -2068,107 +2250,298 @@ export default function Dashboard() {
               </button>
             </div>
 
+            {/* Tab switchers */}
+            <div className="flex border-b border-zinc-800 text-xs font-mono">
+              <button
+                onClick={() => setSettingsTab("global")}
+                className={`flex-1 pb-2 text-center uppercase tracking-wider ${settingsTab === "global" ? "text-[#D4A24E] border-b-2 border-[#D4A24E] font-bold" : "text-[#9A9A92] hover:text-white"}`}
+              >
+                Global Engine
+              </button>
+              <button
+                onClick={() => setSettingsTab("verdict")}
+                className={`flex-1 pb-2 text-center uppercase tracking-wider ${settingsTab === "verdict" ? "text-[#D4A24E] border-b-2 border-[#D4A24E] font-bold" : "text-[#9A9A92] hover:text-white"}`}
+              >
+                Verdict
+              </button>
+              <button
+                onClick={() => setSettingsTab("agents")}
+                className={`flex-1 pb-2 text-center uppercase tracking-wider ${settingsTab === "agents" ? "text-[#D4A24E] border-b-2 border-[#D4A24E] font-bold" : "text-[#9A9A92] hover:text-white"}`}
+              >
+                Agent Lab
+              </button>
+            </div>
+
             {/* Provider Form Settings */}
             <div className="flex flex-col gap-4 text-sm font-sans">
               
-              {/* Select Provider */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-mono text-[#9A9A92] uppercase">MODEL PROVIDER</label>
-                <select
-                  value={tempProvider}
-                  onChange={(e) => {
-                    const prov = e.target.value as any;
-                    setTempProvider(prov);
-                    // Autofill default values when swapping
-                    if (prov === "ollama") {
-                      setTempBaseUrl("http://localhost:11434/v1");
-                      setTempModelName("llama3.1:70b");
-                    } else if (prov === "lm-studio") {
-                      setTempBaseUrl("http://localhost:1234/v1");
-                      setTempModelName("");
-                    } else if (prov === "nvidia") {
-                      setTempBaseUrl("");
-                      setTempModelName("meta/llama-3.3-70b-instruct");
-                    } else {
-                      setTempBaseUrl("");
-                      setTempModelName("");
-                    }
-                  }}
-                  className="bg-[#16181A] border border-zinc-800 text-white rounded-lg p-2.5 focus:border-[#D4A24E] focus:outline-hidden"
-                >
-                  <option value="nvidia">NVIDIA NIM (CLOUD)</option>
-                  <option value="ollama">OLLAMA (LOCAL)</option>
-                  <option value="lm-studio">LM STUDIO (LOCAL)</option>
-                  <option value="custom">CUSTOM OPENAI-COMPATIBLE</option>
-                </select>
-              </div>
+              {settingsTab === "global" && (
+                <div className="flex flex-col gap-4">
+                  {/* Select Provider */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-mono text-[#9A9A92] uppercase">MODEL PROVIDER</label>
+                    <select
+                      value={tempProvider}
+                      onChange={(e) => {
+                        const prov = e.target.value as any;
+                        setTempProvider(prov);
+                        // Autofill default values when swapping
+                        if (prov === "ollama") {
+                          setTempBaseUrl("http://localhost:11434/v1");
+                          setTempModelName("llama3.1:70b");
+                        } else if (prov === "lm-studio") {
+                          setTempBaseUrl("http://localhost:1234/v1");
+                          setTempModelName("");
+                        } else if (prov === "nvidia") {
+                          setTempBaseUrl("");
+                          setTempModelName("meta/llama-3.3-70b-instruct");
+                        } else if (prov === "openrouter") {
+                          setTempBaseUrl("");
+                          setTempModelName("meta-llama/llama-3.3-70b-instruct");
+                        } else {
+                          setTempBaseUrl("");
+                          setTempModelName("");
+                        }
+                      }}
+                      className="bg-[#16181A] border border-zinc-800 text-white rounded-lg p-2.5 focus:border-[#D4A24E] focus:outline-hidden"
+                    >
+                      <option value="nvidia">NVIDIA NIM (CLOUD)</option>
+                      <option value="openrouter">OPENROUTER (CLOUD)</option>
+                      <option value="ollama">OLLAMA (LOCAL)</option>
+                      <option value="lm-studio">LM STUDIO (LOCAL)</option>
+                      <option value="custom">CUSTOM OPENAI-COMPATIBLE</option>
+                    </select>
+                  </div>
 
-              {/* Conditional base URL */}
-              {tempProvider !== "nvidia" && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-mono text-[#9A9A92] uppercase">BASE URL</label>
-                  <input
-                    type="text"
-                    value={tempBaseUrl}
-                    onChange={(e) => setTempBaseUrl(e.target.value)}
-                    placeholder={tempProvider === "ollama" ? "http://localhost:11434/v1" : tempProvider === "lm-studio" ? "http://localhost:1234/v1" : "https://api.yourdomain.com/v1"}
-                    className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
-                  />
+                  {/* Conditional base URL */}
+                  {tempProvider !== "nvidia" && tempProvider !== "openrouter" && (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-mono text-[#9A9A92] uppercase">BASE URL</label>
+                      <input
+                        type="text"
+                        value={tempBaseUrl}
+                        onChange={(e) => setTempBaseUrl(e.target.value)}
+                        placeholder={tempProvider === "ollama" ? "http://localhost:11434/v1" : tempProvider === "lm-studio" ? "http://localhost:1234/v1" : "https://api.yourdomain.com/v1"}
+                        className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
+                      />
+                    </div>
+                  )}
+
+                  {/* Conditional API Key */}
+                  {(tempProvider === "nvidia" || tempProvider === "openrouter" || tempProvider === "custom") && (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-mono text-[#9A9A92] uppercase">API KEY</label>
+                      <input
+                        type="password"
+                        value={tempApiKey}
+                        onChange={(e) => setTempApiKey(e.target.value)}
+                        placeholder={tempProvider === "openrouter" ? "sk-or-..." : "nvapi-... or custom token"}
+                        className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
+                      />
+                    </div>
+                  )}
+
+                  {/* Conditional Model Name */}
+                  {tempProvider !== "lm-studio" && (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-mono text-[#9A9A92] uppercase">MODEL ID / NAME</label>
+                      <input
+                        type="text"
+                        value={tempModelName}
+                        onChange={(e) => setTempModelName(e.target.value)}
+                        className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
+                      />
+                    </div>
+                  )}
+
+                  {/* Max Tokens configuration */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-mono text-[#9A9A92] uppercase">MAX TOKENS (RESPONSE LIMIT)</label>
+                    <input
+                      type="number"
+                      value={tempMaxTokens}
+                      onChange={(e) => setTempMaxTokens(e.target.value === "" ? "" : Number(e.target.value))}
+                      placeholder="Defaults: 400 (agents), 800 (verdict)"
+                      className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2.5 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
+                    />
+                    <p className="text-[10px] text-[#9A9A92]">
+                      Override the response limit for verbose models. Leave blank for default limits.
+                    </p>
+                  </div>
+
+                  {tempProvider === "lm-studio" && (
+                    <p className="text-[11px] text-[#9A9A92] leading-relaxed">
+                      LM Studio automatically uses whatever model you have currently loaded in the LM Studio application. Ensure the server is running on the specified port.
+                    </p>
+                  )}
+
+                  {tempProvider === "ollama" && (
+                    <p className="text-[11px] text-[#D4A24E]/80 leading-relaxed font-mono">
+                      Make sure you have pulled the model first (e.g. <code className="bg-black px-1.5 py-0.5 rounded font-mono">ollama pull {tempModelName || "llama3.1:70b"}</code>) and that Ollama is running.
+                    </p>
+                  )}
                 </div>
               )}
 
-              {/* Conditional API Key */}
-              {(tempProvider === "nvidia" || tempProvider === "custom") && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-mono text-[#9A9A92] uppercase">API KEY</label>
-                  <input
-                    type="password"
-                    value={tempApiKey}
-                    onChange={(e) => setTempApiKey(e.target.value)}
-                    placeholder="nvapi-... or custom token"
-                    className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
-                  />
+              {settingsTab === "verdict" && (
+                <div className="flex flex-col gap-4">
+                  <p className="text-xs text-[#9A9A92] leading-relaxed">
+                    By default, the final scorecard verdict is synthesized using the default global model engine. You can override the model specifically for this analysis call below.
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-mono text-[#9A9A92] uppercase font-bold">Verdict Provider</label>
+                    <select
+                      value={tempVerdictOverride?.provider || "global"}
+                      onChange={(e) => {
+                        const prov = e.target.value;
+                        if (prov === "global") {
+                          setTempVerdictOverride(null);
+                        } else {
+                          setTempVerdictOverride({
+                            provider: prov,
+                            modelName: tempVerdictOverride?.modelName || providerModels[prov] || "",
+                            apiKey: tempVerdictOverride?.apiKey || ""
+                          });
+                        }
+                      }}
+                      className="bg-[#16181A] border border-zinc-800 text-white rounded-lg p-2.5 focus:border-[#D4A24E] focus:outline-hidden"
+                    >
+                      <option value="global">Use Global default</option>
+                      <option value="nvidia">Nvidia Nim</option>
+                      <option value="openrouter">OpenRouter</option>
+                      <option value="ollama">Ollama</option>
+                      <option value="lm-studio">LM Studio</option>
+                      <option value="custom">Custom OpenAI</option>
+                    </select>
+                  </div>
+                  {tempVerdictOverride && tempVerdictOverride.provider !== "global" && (
+                    <>
+                      {tempVerdictOverride.provider !== "lm-studio" && (
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-xs font-mono text-[#9A9A92] uppercase">Model ID</label>
+                          <input
+                            type="text"
+                            value={tempVerdictOverride.modelName || ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTempVerdictOverride(prev => prev ? ({ ...prev, modelName: val }) : null);
+                            }}
+                            placeholder="e.g. google/gemini-2.5-flash"
+                            className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
+                          />
+                        </div>
+                      )}
+                      {(tempVerdictOverride.provider === "nvidia" || tempVerdictOverride.provider === "openrouter" || tempVerdictOverride.provider === "custom") && (
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-xs font-mono text-[#9A9A92] uppercase">API Key Override (optional)</label>
+                          <input
+                            type="password"
+                            value={tempVerdictOverride.apiKey || ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTempVerdictOverride(prev => prev ? ({ ...prev, apiKey: val }) : null);
+                            }}
+                            placeholder="Uses provider default if empty"
+                            className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
-              {/* Conditional Model Name */}
-              {tempProvider !== "lm-studio" && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-mono text-[#9A9A92] uppercase">MODEL ID / NAME</label>
-                  <input
-                    type="text"
-                    value={tempModelName}
-                    onChange={(e) => setTempModelName(e.target.value)}
-                    className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
-                  />
+              {settingsTab === "agents" && (
+                <div className="flex flex-col gap-4 max-h-[320px] overflow-y-auto pr-2">
+                  <p className="text-xs text-[#9A9A92] leading-relaxed">
+                    Assign a specific provider, model, and optional API key overrides for each individual agent in the system.
+                  </p>
+                  {agents.map((agent) => (
+                    <div key={agent.id} className="p-3 bg-[#16181A] border border-zinc-850 rounded-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{agent.avatar_emoji}</span>
+                          <span className="font-semibold text-white text-xs">{agent.name}</span>
+                        </div>
+                        <span className="text-[9px] text-[#9A9A92] font-mono uppercase">
+                          {agent.location.split(",")[0]}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[9px] text-[#9A9A92] uppercase font-mono">Provider</label>
+                          <select
+                            value={tempAgentOverrides[agent.id]?.provider || "global"}
+                            onChange={(e) => {
+                              const prov = e.target.value;
+                              setTempAgentOverrides(prev => ({
+                                ...prev,
+                                [agent.id]: {
+                                  ...prev[agent.id],
+                                  provider: prov,
+                                  modelName: prev[agent.id]?.modelName || (prov !== "global" ? providerModels[prov] || "" : "")
+                                }
+                              }));
+                            }}
+                            className="bg-[#1F2226] border border-zinc-800 text-white rounded p-1 focus:border-[#D4A24E] focus:outline-hidden"
+                          >
+                            <option value="global">Use Global default</option>
+                            <option value="nvidia">Nvidia Nim</option>
+                            <option value="openrouter">OpenRouter</option>
+                            <option value="ollama">Ollama</option>
+                            <option value="lm-studio">LM Studio</option>
+                            <option value="custom">Custom OpenAI</option>
+                          </select>
+                        </div>
+                        
+                        {tempAgentOverrides[agent.id]?.provider && tempAgentOverrides[agent.id]?.provider !== "global" && (
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[9px] text-[#9A9A92] uppercase font-mono">Model ID</label>
+                            <input
+                              type="text"
+                              value={tempAgentOverrides[agent.id]?.modelName || ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setTempAgentOverrides(prev => ({
+                                  ...prev,
+                                  [agent.id]: {
+                                    ...prev[agent.id],
+                                    modelName: val
+                                  }
+                                }));
+                              }}
+                              placeholder="e.g. gpt-4o"
+                              className="bg-[#1F2226] border border-zinc-800 text-white rounded p-1 text-xs font-mono focus:border-[#D4A24E] focus:outline-hidden"
+                            />
+                          </div>
+                        )}
+                      </div>
+                      
+                      {tempAgentOverrides[agent.id]?.provider && tempAgentOverrides[agent.id]?.provider !== "global" && tempAgentOverrides[agent.id]?.provider !== "ollama" && tempAgentOverrides[agent.id]?.provider !== "lm-studio" && (
+                        <div className="flex flex-col gap-1 text-xs">
+                          <label className="text-[9px] text-[#9A9A92] uppercase font-mono">API Key override (optional)</label>
+                          <input
+                            type="password"
+                            value={tempAgentOverrides[agent.id]?.apiKey || ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTempAgentOverrides(prev => ({
+                                ...prev,
+                                [agent.id]: {
+                                  ...prev[agent.id],
+                                  apiKey: val
+                                }
+                              }));
+                            }}
+                            placeholder="Uses provider default if empty"
+                            className="bg-[#1F2226] border border-zinc-800 text-white rounded p-1 text-xs font-mono focus:border-[#D4A24E] focus:outline-hidden"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              {/* Max Tokens configuration */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-mono text-[#9A9A92] uppercase">MAX TOKENS (RESPONSE LIMIT)</label>
-                <input
-                  type="number"
-                  value={tempMaxTokens}
-                  onChange={(e) => setTempMaxTokens(e.target.value === "" ? "" : Number(e.target.value))}
-                  placeholder="Defaults: 400 (agents), 800 (verdict)"
-                  className="bg-[#16181A] border border-zinc-800 text-[#ECE8E1] rounded-lg p-2.5 font-mono text-xs focus:border-[#D4A24E] focus:outline-hidden"
-                />
-                <p className="text-[10px] text-[#9A9A92]">
-                  Override the response limit for verbose models. Leave blank for default limits.
-                </p>
-              </div>
-
-              {tempProvider === "lm-studio" && (
-                <p className="text-[11px] text-[#9A9A92] leading-relaxed">
-                  LM Studio automatically uses whatever model you have currently loaded in the LM Studio application. Ensure the server is running on the specified port.
-                </p>
-              )}
-
-              {tempProvider === "ollama" && (
-                <p className="text-[11px] text-[#D4A24E]/80 leading-relaxed font-mono">
-                  Make sure you have pulled the model first (e.g. <code className="bg-black px-1.5 py-0.5 rounded font-mono">ollama pull {tempModelName || "llama3.1:70b"}</code>) and that Ollama is running.
-                </p>
               )}
 
             </div>
@@ -2179,7 +2552,7 @@ export default function Dashboard() {
                 onClick={handleSaveSettings}
                 className="w-full bg-[#D4A24E] hover:bg-[#ECE8E1] text-[#16181A] py-2.5 px-4 rounded-lg font-mono font-bold tracking-widest text-xs uppercase transition-colors cursor-pointer"
               >
-                💾 APPLY SETTINGS
+                💾 APPLY SYSTEM SETTINGS
               </button>
               
               <button
